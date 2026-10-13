@@ -349,6 +349,14 @@ def _face_weights(
     return plus, minus, linear
 
 
+def _wall_weights(x0: float, x1: float, x2: float) -> tuple[float, float, float]:
+    """Weights of ``f'(x0) ~ c0 f0 + c1 f1 + c2 f2`` (quadratic through three nodes)."""
+    c0 = (2.0 * x0 - x1 - x2) / ((x0 - x1) * (x0 - x2))
+    c1 = (x0 - x2) / ((x1 - x0) * (x1 - x2))
+    c2 = (x0 - x1) / ((x2 - x0) * (x2 - x1))
+    return c0, c1, c2
+
+
 def _wall_derivative(
     x0: float, x1: float, x2: float, f0: CArray, f1: CArray, f2: CArray
 ) -> CArray:
@@ -435,21 +443,62 @@ class Annulus:
 
     # --- setup ----------------------------------------------------------------
     def _lap_coefficients(self) -> None:
-        r, w, rf = self.r, self.width, self.faces
-        face_a = np.empty(self.config.n_r + 1)
-        face_a[1:-1] = rf[1:-1] / np.diff(r)
-        face_a[0] = rf[0] / (0.5 * w[0])
-        face_a[-1] = rf[-1] / (0.5 * w[-1])
-        self.a_lo = face_a[:-1] / self.area
-        self.a_up = face_a[1:] / self.area
-        self.wall_in = np.zeros(self.config.n_r)
-        self.wall_out = np.zeros(self.config.n_r)
-        self.wall_in[0] = self.a_lo[0]
-        self.wall_out[-1] = self.a_up[-1]
-        self.a_lo = self.a_lo.copy()
-        self.a_up = self.a_up.copy()
-        self.a_lo[0] = 0.0
-        self.a_up[-1] = 0.0
+        r, rf = self.r, self.faces
+        face_a = rf[1:-1] / np.diff(r)
+        self._lo0 = np.zeros(self.config.n_r)
+        self._up0 = np.zeros(self.config.n_r)
+        self._lo0[1:] = face_a / self.area[1:]
+        self._up0[:-1] = face_a / self.area[:-1]
+        # second-order Dirichlet closure: wall derivative from (wall, c0, c1)
+        self._d_in = _wall_weights(self.r_in, r[0], r[1])
+        self._d_out = _wall_weights(self.config.radius, r[-1], r[-2])
+        self.w_in = -self.r_in * self._d_in[0] / self.area[0]
+        self.w_out = self.config.radius * self._d_out[0] / self.area[-1]
+
+    def bands(
+        self, *, dirichlet_in: bool, dirichlet_out: bool
+    ) -> tuple[Array, Array, Array]:
+        """Radial Laplacian ``(1/r) d(r f')/dr`` as ``(lower, diag, upper)`` bands.
+
+        A wall is Neumann (zero flux) unless Dirichlet, in which case the wall
+        derivative is the second-order three-point one-sided formula and the wall
+        value enters through ``w_in`` / ``w_out`` (rate per unit wall value).
+        """
+        lo, up = self._lo0.copy(), self._up0.copy()
+        di = -(lo + up)
+        if dirichlet_in:
+            di[0] += -self.r_in * self._d_in[1] / self.area[0]
+            up[0] += -self.r_in * self._d_in[2] / self.area[0]
+        if dirichlet_out:
+            di[-1] += self.config.radius * self._d_out[1] / self.area[-1]
+            lo[-1] += self.config.radius * self._d_out[2] / self.area[-1]
+        return lo, di, up
+
+    def _t_bands(self) -> tuple[Array, Array, Array]:
+        c = self.config
+        return self.bands(
+            dirichlet_in=c.inner_t == "fixed", dirichlet_out=c.outer_t == "fixed"
+        )
+
+    def apply_laplacian(
+        self,
+        hat: CArray,
+        bands: tuple[Array, Array, Array],
+        f_in: CArray,
+        f_out: CArray,
+    ) -> CArray:
+        """Apply ``bands`` (and the azimuthal ``-m^2/r^2`` term) to ``hat``.
+
+        ``f_in`` / ``f_out`` are the Dirichlet wall values (zero for a Neumann wall,
+        where the coefficient is not used).
+        """
+        lo, di, up = bands
+        out = di[:, None] * hat - (self.m[None, :] ** 2 / self.r[:, None] ** 2) * hat
+        out[1:] += lo[1:, None] * hat[:-1]
+        out[:-1] += up[:-1, None] * hat[1:]
+        out[0] += self.w_in * f_in
+        out[-1] += self.w_out * f_out
+        return np.asarray(out)
 
     def _build_mask(self) -> None:
         c = self.config
@@ -471,12 +520,13 @@ class Annulus:
         self.damping: Array = np.exp(-c.filter_strength * ramp)
 
     def _poisson_factors(self) -> tuple[CArray, CArray, CArray]:
-        lower = np.repeat(self.a_lo[:, None], self.k, axis=1).astype(np.complex128)
-        upper = np.repeat(self.a_up[:, None], self.k, axis=1).astype(np.complex128)
-        diag = -(self.a_lo + self.a_up + self.wall_in + self.wall_out)[:, None] - (
-            self.m[None, :] ** 2 / self.r[:, None] ** 2
+        lo, di, up = self.bands(dirichlet_in=True, dirichlet_out=True)
+        diag = di[:, None] - self.m[None, :] ** 2 / self.r[:, None] ** 2
+        return _factor(
+            np.repeat(lo[:, None], self.k, axis=1).astype(np.complex128),
+            diag.astype(np.complex128),
+            np.repeat(up[:, None], self.k, axis=1).astype(np.complex128),
         )
-        return _factor(lower, diag.astype(np.complex128), upper)
 
     # --- transforms -----------------------------------------------------------
     def to_phys(self, hat: CArray) -> Array:
@@ -684,30 +734,22 @@ class Annulus:
             return self._cache[key]
         c = self.config
         a0 = 1.0 / dt if omega is None else (1.0 + 2.0 * omega) / ((1.0 + omega) * dt)
-        r2 = self.r[:, None] ** 2
-        m2 = self.m[None, :] ** 2
-        lo = np.repeat(self.a_lo[:, None], self.k, axis=1)
-        up = np.repeat(self.a_up[:, None], self.k, axis=1)
-        wall = (self.wall_in + self.wall_out)[:, None]
-        vis = c.nu
-        diag_z = a0 + c.endcap_rate + vis * (lo + up + wall + m2 / r2)
-        fz = _factor(
-            (-vis * lo).astype(np.complex128),
-            diag_z.astype(np.complex128),
-            (-vis * up).astype(np.complex128),
+        m2r2 = self.m[None, :] ** 2 / self.r[:, None] ** 2
+
+        def build(
+            bands: tuple[Array, Array, Array], coeff: float, sink: float
+        ) -> tuple[CArray, CArray, CArray]:
+            lo, di, up = bands
+            return _factor(
+                np.repeat(-coeff * lo[:, None], self.k, axis=1).astype(np.complex128),
+                (a0 + sink - coeff * (di[:, None] - m2r2)).astype(np.complex128),
+                np.repeat(-coeff * up[:, None], self.k, axis=1).astype(np.complex128),
+            )
+
+        fz = build(
+            self.bands(dirichlet_in=True, dirichlet_out=True), c.nu, c.endcap_rate
         )
-        kap = c.kappa
-        wall_t = np.zeros(c.n_r)
-        if c.inner_t == "fixed":
-            wall_t = wall_t + self.wall_in
-        if c.outer_t == "fixed":
-            wall_t = wall_t + self.wall_out
-        diag_t = a0 + kap * (lo + up + wall_t[:, None] + m2 / r2)
-        ft = _factor(
-            (-kap * lo).astype(np.complex128),
-            diag_t.astype(np.complex128),
-            (-kap * up).astype(np.complex128),
-        )
+        ft = build(self._t_bands(), c.kappa, 0.0)
         # mean wind: viscous flux operator in stress form, free slip at both walls
         k_face = np.zeros(c.n_r + 1)
         k_face[1:-1] = self.faces[1:-1] ** 3 * c.nu / np.diff(self.r)
@@ -728,8 +770,8 @@ class Annulus:
 
     def _bc_zeta(self, z_in: CArray, z_out: CArray) -> CArray:
         bc = np.zeros((self.config.n_r, self.k), dtype=np.complex128)
-        bc[0] += self.config.nu * self.wall_in[0] * z_in
-        bc[-1] += self.config.nu * self.wall_out[-1] * z_out
+        bc[0] += self.config.nu * self.w_in * z_in
+        bc[-1] += self.config.nu * self.w_out * z_out
         return bc
 
     def _bc_temp(self, t: float) -> CArray:
@@ -740,13 +782,13 @@ class Annulus:
         if c.outer_t == "fixed":
             t_out = zero_t.copy()
             t_out[0] = c.t_outer
-            bc[-1] += kap * self.wall_out[-1] * t_out
+            bc[-1] += kap * self.w_out * t_out
         else:
             bc[-1] += c.radius * self._flux_hat(t) / self.area[-1]
         if c.inner_t == "fixed":
             t_in = zero_t.copy()
             t_in[0] = c.t_inner
-            bc[0] += kap * self.wall_in[0] * t_in
+            bc[0] += kap * self.w_in * t_in
         else:
             q_in = zero_t.copy()
             q_in[0] = c.flux_inner / c.rho_cp
@@ -856,27 +898,25 @@ class Annulus:
         """Semi-discrete ``d zeta_m/dt`` and ``d T_m/dt`` (no time stepping)."""
         c = self.config
         (n_z, n_t, _), _, (z_in, z_out) = self.explicit_terms(state)
-        zeta, temp = state.zeta[:, m], state.temp[:, m]
-        mm = m * m / self.r**2
-        wall_t = np.zeros(c.n_r)
+        t_in, t_out = self._t_fixed_values()
+        lap_z = self.apply_laplacian(
+            state.zeta, self.bands(dirichlet_in=True, dirichlet_out=True), z_in, z_out
+        )
+        lap_t = self.apply_laplacian(state.temp, self._t_bands(), t_in, t_out)
+        return (
+            c.nu * lap_z[:, m] + n_z[:, m] - c.endcap_rate * state.zeta[:, m],
+            c.kappa * lap_t[:, m] + n_t[:, m],
+        )
+
+    def _t_fixed_values(self) -> tuple[CArray, CArray]:
+        c = self.config
+        zero = np.zeros(self.k, dtype=np.complex128)
+        t_in, t_out = zero.copy(), zero.copy()
         if c.inner_t == "fixed":
-            wall_t = wall_t + self.wall_in
+            t_in[0] = c.t_inner
         if c.outer_t == "fixed":
-            wall_t = wall_t + self.wall_out
-
-        def laplacian(f: CArray, wall: Array) -> CArray:
-            out = -(self.a_lo + self.a_up + wall) * f - mm * f
-            out[1:] += self.a_lo[1:] * f[:-1]
-            out[:-1] += self.a_up[:-1] * f[1:]
-            return np.asarray(out)
-
-        lap_z = laplacian(zeta, self.wall_in + self.wall_out)
-        lap_z[0] += self.wall_in[0] * z_in[m]
-        lap_z[-1] += self.wall_out[-1] * z_out[m]
-        lap_t = laplacian(temp, wall_t)
-        return c.nu * lap_z + n_z[:, m] - c.endcap_rate * zeta, c.kappa * lap_t + n_t[
-            :, m
-        ]
+            t_out[0] = c.t_outer
+        return t_in, t_out
 
     def max_growth_rate(self, base: AnnulusState, m: int) -> float:
         """Largest real eigenvalue of the semi-discrete linearisation about ``base``.

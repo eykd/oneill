@@ -754,23 +754,24 @@ def flux_critical_ra(n_r: int) -> float:
 
 
 class TestConvectionOnset:
-    def test_free_slip_onset_is_657_and_second_order(self) -> None:
-        coarse = rigid_critical_ra(16, "free", 2.221, (600.0, 720.0))
-        fine = rigid_critical_ra(32, "free", 2.221, (600.0, 720.0))
-        assert fine == pytest.approx(657.5, rel=0.01)
-        assert abs(fine - 657.5) < 0.7 * abs(coarse - 657.5)
+    """Raw thresholds converge at second order, with no extrapolation."""
+
+    def test_free_slip_onset_is_657_5(self) -> None:
+        coarse = rigid_critical_ra(24, "free", 2.221, (600.0, 720.0))
+        fine = rigid_critical_ra(48, "free", 2.221, (600.0, 720.0))
+        assert fine == pytest.approx(657.5, rel=0.003)  # + 0.2 % from curvature
+        assert abs(fine - 658.9) < 0.4 * abs(coarse - 658.9)
 
     def test_rigid_fixed_temperature_onset_is_1708(self) -> None:
-        # the no-slip vorticity wall condition is first order, so extrapolate
         coarse = rigid_critical_ra(24, "noslip", 3.117, (1650.0, 1770.0))
         fine = rigid_critical_ra(48, "noslip", 3.117, (1650.0, 1770.0))
-        assert coarse < fine < 1708.0  # approaches from below as the grid refines
-        assert 2.0 * fine - coarse == pytest.approx(1708.0, rel=0.03)
+        assert fine == pytest.approx(1708.0, rel=0.003)
+        assert (1708.0 - fine) < 0.4 * (1708.0 - coarse)  # second order: ~4x
 
     def test_rigid_fixed_flux_onset_is_720(self) -> None:
-        coarse, fine = flux_critical_ra(24), flux_critical_ra(48)
-        assert coarse < fine < 720.0
-        assert 2.0 * fine - coarse == pytest.approx(720.0, rel=0.03)
+        coarse, fine = flux_critical_ra(12), flux_critical_ra(24)
+        assert fine == pytest.approx(720.0, rel=0.003)
+        assert (720.0 - fine) < 0.4 * (720.0 - coarse)
 
     def test_the_stable_side_of_the_threshold_decays(self) -> None:
         # with Ra well below critical every mode is damped
@@ -783,3 +784,59 @@ class TestConvectionOnset:
         model = Annulus(cfg)
         base = model.initial_state(amplitude=0.0)
         assert model.max_growth_rate(base, 3) < 0.0
+
+
+class TestWallVorticityClosure:
+    """Exact streamfunction -> discrete Poisson -> wall vorticity converges."""
+
+    @staticmethod
+    def wall_error(n_r: int, wall: str) -> float:
+        cfg = AnnulusConfig(
+            radius=1.0,
+            r_in_fraction=0.3,
+            n_r=n_r,
+            n_theta=16,
+            stretch=0.0,
+            wall=wall,
+            floor_drag=0.0,
+        )
+        model = Annulus(cfg)
+        m = 2
+        length = 1.0 - model.r_in
+        s = (model.r - model.r_in) / length
+        if wall == "noslip":  # psi = psi_r = 0 on both walls
+            psi = (s * (1.0 - s)) ** 2
+            dpsi = 2.0 * s * (1.0 - s) * (1.0 - 2.0 * s) / length
+            d2psi = (2.0 - 12.0 * s * (1.0 - s)) / length**2
+            exact_in = -2.0 / length**2
+            exact_out = -2.0 / length**2
+        else:  # free slip needs only psi = 0: exact zeta_w = -2 psi_r / r
+            psi = np.sin(math.pi * s)
+            dpsi = math.pi * np.cos(math.pi * s) / length
+            d2psi = -((math.pi / length) ** 2) * psi
+            exact_in = -2.0 * (math.pi / length) / model.r_in
+            exact_out = -2.0 * (-math.pi / length) / 1.0
+        zeta = -(d2psi + dpsi / model.r - m**2 * psi / model.r**2)
+        z = np.zeros((n_r, model.k), dtype=complex)
+        z[:, m] = zeta
+        z_in, z_out = model._zeta_walls(model.psi(z))  # noqa: SLF001
+        return float(
+            max(
+                abs(z_in[m] - exact_in) / abs(exact_in),
+                abs(z_out[m] - exact_out) / abs(exact_out),
+            )
+        )
+
+    def test_free_slip_wall_vorticity_converges_at_second_order(self) -> None:
+        errors = [self.wall_error(n, "free") for n in (12, 24, 48)]
+        assert errors[1] < 0.3 * errors[0]
+        assert errors[2] < 0.3 * errors[1]
+        assert errors[2] < 5e-4
+
+    def test_no_slip_wall_vorticity_converges_at_first_order(self) -> None:
+        # the cell-centred psi error near a rigid wall is not smooth enough for the
+        # Taylor formula to be second order; the onset thresholds still are
+        errors = [self.wall_error(n, "noslip") for n in (24, 48, 96)]
+        assert errors[1] < 0.65 * errors[0]
+        assert errors[2] < 0.65 * errors[1]
+        assert errors[2] < 0.05
