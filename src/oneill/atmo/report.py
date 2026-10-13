@@ -90,6 +90,14 @@ PARCEL_SECONDS = 300.0
 DEFLECTION_RISE = 2.0
 
 CAVEATS = {
+    "annulus": (
+        "Two-dimensional (axis-invariant) Boussinesq convection with constant eddy "
+        "viscosity, a free-slip inner wall at the stated radius (an artifact: the "
+        "habitat has no inner wall) and a canopy-drag floor. It can support or "
+        "undermine the 2-D hypothesis but cannot show where axis-invariance breaks "
+        "down. The arrest scale uses the run's measured dissipation. Energy is "
+        "conserved only to a few percent when eddies saturate."
+    ),
     "gas": (
         "Dry mixture ideal gas; water vapour is a passive trace carried in the "
         "SP-413 total pressure but not in R_s, c_p or the density (about 2 % bias). "

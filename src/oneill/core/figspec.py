@@ -30,6 +30,23 @@ class Band:
 
 
 @dataclass(frozen=True, eq=False)
+class Mesh:
+    """A colour map ``values[i, j]`` on the grid ``(x[i, j], y[i, j])``.
+
+    ``x`` and ``y`` are the corner or centre coordinates handed to the plotting
+    backend (``pcolormesh``); a polar snapshot passes ``r cos(theta)`` and
+    ``r sin(theta)``.
+    """
+
+    label: str
+    x: Vec3
+    y: Vec3
+    values: Vec3
+    cmap: str = "viridis"
+    symmetric: bool = False
+
+
+@dataclass(frozen=True, eq=False)
 class Panel:
     """One set of axes."""
 
@@ -42,6 +59,8 @@ class Panel:
     xticklabels: tuple[str, ...] = ()
     legend_size: float | None = None
     bands: tuple[Band, ...] = ()
+    meshes: tuple[Mesh, ...] = ()
+    equal_aspect: bool = False
 
 
 @dataclass(frozen=True, eq=False)

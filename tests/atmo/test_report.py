@@ -28,6 +28,7 @@ def test_build_report_is_cached_per_habitat(report: AtmosphereReport) -> None:
 
 def test_caveats_cover_every_section(report: AtmosphereReport) -> None:
     assert set(report.caveats) == {
+        "annulus",
         "gas",
         "equilibrium",
         "numbers",

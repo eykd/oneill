@@ -134,3 +134,9 @@ Molecular viscosity only. Illustrative: the laminar end-cap sink is invalid at t
 
 *One-dimensional axisymmetric model with constant eddy viscosities and a canopy-drag floor (C_D from the suburban log law at 10 m); winds are quoted at that 10 m reference height, the one the drag law is written for. The end-cap sink is the linear Greenspan-Howard result, valid for epsilon = |u| / (Omega r) <= 0.3; rows with a larger peak epsilon (fast ramps, the 50 % step) are order-of-magnitude only, and turbulent end caps are not linear. Adjustment times depend on the blend width of the viscosity closure; the sensitivity band is shown, and 50 % times drift about 3 % with the production time step.*
 <!-- /gen -->
+
+<!-- gen:annulus -->
+No L3 runs are committed yet. Run `oneill atmosphere --run-l3 OUT_DIR` (see `--l3-case`, `--l3-days`) to write `docs/data/l3_summary.json`.
+
+*Two-dimensional (axis-invariant) Boussinesq convection with constant eddy viscosity, a free-slip inner wall at the stated radius (an artifact: the habitat has no inner wall) and a canopy-drag floor. It can support or undermine the 2-D hypothesis but cannot show where axis-invariance breaks down. The arrest scale uses the run's measured dissipation. Energy is conserved only to a few percent when eddies saturate.*
+<!-- /gen -->

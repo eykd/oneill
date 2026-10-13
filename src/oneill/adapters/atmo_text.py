@@ -7,7 +7,7 @@ touches the file system.
 """
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from oneill.atmo.report import (
     DEFLECTION_RISE,
@@ -24,7 +24,15 @@ if TYPE_CHECKING:
 
     from oneill.atmo.report import AtmosphereReport
 
-BLOCK_NAMES = ("gas", "equilibrium", "numbers", "surface", "parcel", "spinup")
+BLOCK_NAMES = (
+    "gas",
+    "equilibrium",
+    "numbers",
+    "surface",
+    "parcel",
+    "spinup",
+    "annulus",
+)
 
 _MARKER = re.compile(r"<!-- (/gen|gen:[A-Za-z0-9_-]+) -->")
 _OPEN_PREFIX = "gen:"
@@ -476,6 +484,78 @@ def render_spinup(report: AtmosphereReport) -> str:
     return "\n\n".join(parts)
 
 
+def render_annulus(l3: Mapping[str, Any] | None, caveat: str) -> str:
+    """The L3 (2-D annulus) results from the committed JSON summary."""
+    cases = {} if l3 is None else dict(l3.get("cases", {}))
+    if not cases:
+        return (
+            "No L3 runs are committed yet. Run `oneill atmosphere --run-l3 OUT_DIR` "
+            "(see `--l3-case`, `--l3-days`) to write `docs/data/l3_summary.json`.\n\n"
+            f"*{caveat}*"
+        )
+    order = [name for name in CASE_ORDER if name in cases] + sorted(
+        set(cases) - set(CASE_ORDER)
+    )
+    rows = []
+    for name in order:
+        c = cases[name]
+        rows.append(
+            [
+                name,
+                f"{c['days']:g}",
+                f"{c['nu']:g}",
+                "on" if c["coriolis_buoyancy"] else "off",
+                f"{c['r_in_fraction']:g}",
+                "yes" if c["stationary"] else "no",
+                f"{c['rms_wind_10m']:.2f}",
+                f"{c['gust_10m']:.2f}",
+                f"{c['zonal_wind_10m']:+.2f}",
+                f"{c['m_peak']}",
+                f"{c['length_peak_m'] / 1000.0:.2f}",
+                f"{c['arrest_low_m'] / 1000.0:.1f}-{c['arrest_high_m'] / 1000.0:.1f}",
+                f"{c['lock_fraction']:.2f}",
+                f"{c['large_scale_fraction']:.2f}",
+                f"{c['nusselt']:.1f}",
+                _wall(c.get("wall_seconds")),
+            ]
+        )
+    table = _table(
+        [
+            "Case",
+            "days",
+            "nu_t",
+            "Coriolis-buoyancy",
+            "r_in / R",
+            "stationary",
+            "rms wind 10 m (m/s)",
+            "gust 10 m (m/s)",
+            "mean wind 10 m (m/s)",
+            "peak m",
+            "eddy scale (km)",
+            "arrest scale (km)",
+            "m=3 fraction",
+            "m<=2 fraction",
+            "Nu",
+            "wall time",
+        ],
+        rows,
+    )
+    notes = "\n".join(f"- **{n}**: {cases[n]['description']}" for n in order)
+    return (
+        "Statistics over the second half of each run; positive mean wind is "
+        "spinward.\n\n"
+        f"{table}\n\n{notes}\n\n*{caveat}*"
+    )
+
+
+def _wall(seconds: float | None) -> str:
+    if seconds is None:
+        return "-"
+    return _duration(seconds)
+
+
+CASE_ORDER = ("primary", "steady", "cb_off", "nu10", "rin005", "rin02", "uniform_sink")
+
 _RENDERERS: dict[str, Callable[[AtmosphereReport], str]] = {
     "gas": render_gas,
     "equilibrium": render_equilibrium,
@@ -486,9 +566,15 @@ _RENDERERS: dict[str, Callable[[AtmosphereReport], str]] = {
 }
 
 
-def render_blocks(report: AtmosphereReport) -> dict[str, str]:
-    """Render every named markdown block."""
-    return {name: _RENDERERS[name](report) for name in BLOCK_NAMES}
+def render_blocks(
+    report: AtmosphereReport, l3: Mapping[str, Any] | None = None
+) -> dict[str, str]:
+    """Render every named markdown block (``l3``: the committed L3 summary)."""
+    blocks = {
+        name: _RENDERERS[name](report) for name in BLOCK_NAMES if name != "annulus"
+    }
+    blocks["annulus"] = render_annulus(l3, report.caveats["annulus"])
+    return {name: blocks[name] for name in BLOCK_NAMES}
 
 
 def replace_blocks(document: str, blocks: Mapping[str, str]) -> str:

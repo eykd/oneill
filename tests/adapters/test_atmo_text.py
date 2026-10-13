@@ -3,9 +3,11 @@ from pathlib import Path
 
 import pytest
 
+from oneill.adapters.atmo_cli import load_l3_summary
 from oneill.adapters.atmo_text import (
     BLOCK_NAMES,
     _band,
+    render_annulus,
     render_blocks,
     render_equilibrium,
     render_parcel,
@@ -16,6 +18,7 @@ from oneill.adapters.atmo_text import (
 from oneill.atmo.report import AtmosphereReport, build_report
 
 DOC = Path(__file__).resolve().parents[2] / "docs" / "atmosphere.md"
+L3_JSON = DOC.parent / "data" / "l3_summary.json"
 BLOCKS = {name: f"content of {name}" for name in BLOCK_NAMES}
 
 
@@ -31,7 +34,8 @@ class TestRendering:
         blocks = render_blocks(report)
         assert tuple(blocks) == BLOCK_NAMES
         for name, text in blocks.items():
-            assert text.count("| --- |") >= 1
+            if name != "annulus":  # no L3 summary passed: just the pointer
+                assert text.count("| --- |") >= 1
             assert report.caveats[name] in text
 
     def test_key_numbers_appear(self, report: AtmosphereReport) -> None:
@@ -70,6 +74,60 @@ class TestRendering:
         assert "n/a (no end caps)" in text
         assert "band over blend width 0.15-0.6" in text
         assert "Ekman Reynolds" in text
+
+
+SUMMARY = {
+    "name": "primary",
+    "description": "day/night, neutral windows",
+    "days": 3.0,
+    "nu": 1.0,
+    "r_in_fraction": 0.1,
+    "coriolis_buoyancy": True,
+    "stationary": False,
+    "rms_wind_10m": 2.345,
+    "gust_10m": 7.1,
+    "zonal_wind_10m": -0.512,
+    "m_peak": 4,
+    "length_peak_m": 4500.0,
+    "arrest_low_m": 700.0,
+    "arrest_high_m": 1500.0,
+    "lock_fraction": 0.4,
+    "large_scale_fraction": 0.2,
+    "nusselt": 12.34,
+    "wall_seconds": 5400.0,
+}
+
+
+class TestAnnulusBlock:
+    def test_without_runs_it_points_at_the_command(self) -> None:
+        text = render_annulus(None, "caveat text")
+        assert "--run-l3" in text
+        assert "*caveat text*" in text
+        assert render_annulus({"cases": {}}, "c").startswith("No L3 runs")
+
+    def test_table_of_cases(self) -> None:
+        extra = {
+            **SUMMARY,
+            "name": "custom",
+            "description": "extra",
+            "wall_seconds": None,
+        }
+        text = render_annulus(
+            {"cases": {"primary": SUMMARY, "custom": extra}}, "caveat text"
+        )
+        assert "| primary | 3 | 1 | on | 0.1 | no | 2.35 | 7.10 | -0.51 | 4 |" in text
+        assert "4.50" in text
+        assert "0.7-1.5" in text
+        assert "90 min" in text
+        assert "| custom |" in text
+        assert text.index("| primary |") < text.index("| custom |")
+        assert "- **primary**: day/night, neutral windows" in text
+        assert "*caveat text*" in text
+
+    def test_render_blocks_includes_the_summary(self, report: AtmosphereReport) -> None:
+        blocks = render_blocks(report, {"cases": {"primary": SUMMARY}})
+        assert "| primary |" in blocks["annulus"]
+        assert report.caveats["annulus"] in blocks["annulus"]
 
 
 class TestBand:
@@ -133,7 +191,8 @@ class TestReplaceBlocks:
 
 def test_committed_doc_is_up_to_date(report: AtmosphereReport) -> None:
     committed = DOC.read_text(encoding="utf-8")
-    assert replace_blocks(committed, render_blocks(report)) == committed, (
+    l3 = load_l3_summary(L3_JSON)
+    assert replace_blocks(committed, render_blocks(report, l3)) == committed, (
         "docs/atmosphere.md is stale: run `uv run oneill atmosphere "
         "--write-doc docs/atmosphere.md`"
     )
