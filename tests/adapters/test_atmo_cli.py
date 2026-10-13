@@ -166,7 +166,7 @@ class TestRunL3:
         status, _ = run_cli("--write-doc", str(doc))
         assert status == 0
         text = doc.read_text(encoding="utf-8")
-        assert "| steady |" in text
+        assert "| constant heating, no night |" in text
         assert "No L3 runs are committed yet" not in text
         # explicit path wins over the default next to the doc
         empty = tmp_path / "empty.json"

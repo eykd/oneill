@@ -6,6 +6,7 @@ import pytest
 from oneill.adapters.atmo_cli import load_l3_summary
 from oneill.adapters.atmo_text import (
     BLOCK_NAMES,
+    CASE_LABELS,
     _band,
     render_annulus,
     render_blocks,
@@ -15,6 +16,7 @@ from oneill.adapters.atmo_text import (
     render_surface,
     replace_blocks,
 )
+from oneill.atmo.l3_runs import CASES
 from oneill.atmo.report import AtmosphereReport, build_report
 
 DOC = Path(__file__).resolve().parents[2] / "docs" / "atmosphere.md"
@@ -121,11 +123,16 @@ class TestAnnulusBlock:
         text = render_annulus(
             {"cases": {"primary": SUMMARY, "custom": extra}}, "caveat text"
         )
-        assert "| primary | 3 | 1 | on | 0.1 | 256 | 2.35 | -0.51 | 7.10 | 4 |" in text
+        assert (
+            "| day/night, heat out through windows | 3 | 1 | on | 0.1 | 256 | 2.35 |"
+            " -0.51 | 7.10 | 4 |" in text
+        )
         assert "| 0.40 | 0.20 | 4.50 | 10x | 90 min |" in text
         assert "| custom |" in text
-        assert text.index("| primary |") < text.index("| custom |")
-        assert "- **primary**: day/night, neutral windows" in text
+        assert text.index("| day/night, heat out") < text.index("| custom |")
+        assert "flux-neutral" not in text
+        assert "heat in and out through the floor strips" in text
+        assert "| primary |" not in text  # internal key never reaches the table
         assert "*caveat text*" in text
         assert "Second-half (days 5-10) means" in text
         assert "spatial peak 10 m wind" in text
@@ -138,12 +145,21 @@ class TestAnnulusBlock:
             {"cases": {"primary": SUMMARY}, "resolution": {"primary_nt512": fine}}, "c"
         )
         assert "Resolution check" in text
-        assert "| primary_nt512 | 3 | 1 | on | 0.1 | 512 |" in text
+        assert (
+            "| primary_nt512 | 3 | 1 | on | 0.1 | 512 |" in text
+        )  # unknown key: as is
 
     def test_render_blocks_includes_the_summary(self, report: AtmosphereReport) -> None:
         blocks = render_blocks(report, {"cases": {"primary": SUMMARY}})
-        assert "| primary |" in blocks["annulus"]
+        assert "| day/night, heat out through windows |" in blocks["annulus"]
         assert report.caveats["annulus"] in blocks["annulus"]
+
+
+def test_every_case_has_a_plain_label() -> None:
+
+    assert set(CASES) <= set(CASE_LABELS)
+    assert CASE_LABELS["nu10"] == "10x eddy viscosity"
+    assert CASE_LABELS["window_sink"] == "day/night, windows always cool"
 
 
 class TestBand:

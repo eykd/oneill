@@ -195,23 +195,15 @@ Gravity is centrifugal, so warm air is pushed toward the axis, and uneven heatin
 <!-- gen:annulus -->
 | Case | days | nu_t | Coriolis-buoyancy | r_in / R | n_theta | rms wind 10 m (m/s) | mean wind 10 m (m/s) | spatial peak 10 m wind, mean\|u\|+3 sigma over theta (m/s) | peak m | m=3 fraction | m<=2 fraction | energy centroid length (km) | day/night KE ratio | wall time |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| primary | 10 | 1 | on | 0.1 | 256 | 1.06 | +0.01 | 4.05 | 3 | 0.19 | 0.17 | 1.40 | 42x | 2.8 h |
-| steady | 10 | 1 | on | 0.1 | 256 | 1.37 | +0.01 | 5.26 | 3 | 0.18 | 0.11 | 1.12 | 2x | 3.3 h |
-| cb_off | 10 | 1 | off | 0.1 | 256 | 1.05 | -0.01 | 4.05 | 3 | 0.19 | 0.20 | 1.49 | 39x | 2.7 h |
-| nu10 | 10 | 10 | on | 0.1 | 256 | 1.03 | +0.01 | 3.96 | 3 | 0.35 | 0.19 | 1.92 | 36x | 2.2 h |
-| rin005 | 10 | 1 | on | 0.05 | 256 | 1.06 | +0.00 | 4.06 | 3 | 0.19 | 0.20 | 1.48 | 36x | 2.8 h |
-| rin02 | 10 | 1 | on | 0.2 | 256 | 1.05 | +0.01 | 4.05 | 3 | 0.18 | 0.18 | 1.47 | 51x | 2.9 h |
-| uniform_sink | 10 | 1 | on | 0.1 | 256 | 1.74 | -0.00 | 6.64 | 2 | 0.11 | 0.65 | 4.28 | 94x | 3.9 h |
+| day/night, heat out through windows | 10 | 1 | on | 0.1 | 256 | 1.06 | +0.01 | 4.05 | 3 | 0.19 | 0.17 | 1.40 | 42x | 2.8 h |
+| constant heating, no night | 10 | 1 | on | 0.1 | 256 | 1.37 | +0.01 | 5.26 | 3 | 0.18 | 0.11 | 1.12 | 2x | 3.3 h |
+| warm-air Coriolis term off | 10 | 1 | off | 0.1 | 256 | 1.05 | -0.01 | 4.05 | 3 | 0.19 | 0.20 | 1.49 | 39x | 2.7 h |
+| 10x eddy viscosity | 10 | 10 | on | 0.1 | 256 | 1.03 | +0.01 | 3.96 | 3 | 0.35 | 0.19 | 1.92 | 36x | 2.2 h |
+| inner wall at 0.05 R | 10 | 1 | on | 0.05 | 256 | 1.06 | +0.00 | 4.06 | 3 | 0.19 | 0.20 | 1.48 | 36x | 2.8 h |
+| inner wall at 0.2 R | 10 | 1 | on | 0.2 | 256 | 1.05 | +0.01 | 4.05 | 3 | 0.18 | 0.18 | 1.47 | 51x | 2.9 h |
+| heat lost from all the air | 10 | 1 | on | 0.1 | 256 | 1.74 | -0.00 | 6.64 | 2 | 0.11 | 0.65 | 4.28 | 94x | 3.9 h |
 
-Second-half (days 5-10) means; 2D (r, theta) model; flux-neutral cases vs volumetric sink differ because the outcome depends on where heat leaves the air. The day/night ratio is the median over whole days after day 1 of the daily maximum over minimum kinetic energy.
-
-- **primary**: day/night, flux-neutral windows, Coriolis-buoyancy on, nu_t = 1
-- **steady**: steady 100 W/m^2 land flux, otherwise as primary
-- **cb_off**: as primary with Coriolis-buoyancy off
-- **nu10**: as primary with nu_t = 10
-- **rin005**: as primary with the inner wall at 0.05 R
-- **rin02**: as primary with the inner wall at 0.2 R
-- **uniform_sink**: inert windows with a uniform sink on the area mean (tau_T = 1 day)
+Second-half (days 5-10) means; 2D (r, theta) model; heat in and out through the floor strips vs volumetric sink differ because the outcome depends on where heat leaves the air. The day/night ratio is the median over whole days after day 1 of the daily maximum over minimum kinetic energy.
 
 *Two-dimensional (axis-invariant) Boussinesq convection with constant eddy viscosity, a free-slip inner wall at the stated radius (an artifact: the habitat has no inner wall) and a canopy-drag floor. It can support or undermine the 2-D hypothesis but cannot show where axis-invariance breaks down. Energy is conserved only to a few percent when eddies saturate.*
 <!-- /gen -->

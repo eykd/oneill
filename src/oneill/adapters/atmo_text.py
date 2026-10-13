@@ -499,8 +499,7 @@ def render_annulus(l3: Mapping[str, Any] | None, caveat: str) -> str:
     )
     rows = [_annulus_row(name, cases[name]) for name in order]
     table = _table(ANNULUS_HEADERS, rows)
-    notes = "\n".join(f"- **{n}**: {cases[n]['description']}" for n in order)
-    parts = [table, FOOTNOTE, notes]
+    parts = [table, FOOTNOTE]
     resolution = {} if l3 is None else dict(l3.get("resolution", {}))
     if resolution:
         rrows = [_annulus_row(name, resolution[name]) for name in sorted(resolution)]
@@ -511,6 +510,18 @@ def render_annulus(l3: Mapping[str, Any] | None, caveat: str) -> str:
     parts.append(f"*{caveat}*")
     return "\n\n".join(parts)
 
+
+CASE_LABELS = {
+    "primary": "day/night, heat out through windows",
+    "window_sink": "day/night, windows always cool",
+    "steady": "constant heating, no night",
+    "uniform_sink": "heat lost from all the air",
+    "cb_off": "warm-air Coriolis term off",
+    "nu10": "10x eddy viscosity",
+    "rin005": "inner wall at 0.05 R",
+    "rin02": "inner wall at 0.2 R",
+}
+"""Plain-language row labels; the JSON keeps the case keys."""
 
 ANNULUS_HEADERS = [
     "Case",
@@ -530,10 +541,10 @@ ANNULUS_HEADERS = [
     "wall time",
 ]
 FOOTNOTE = (
-    "Second-half (days 5-10) means; 2D (r, theta) model; flux-neutral cases vs "
-    "volumetric sink differ because the outcome depends on where heat leaves the "
-    "air. The day/night ratio is the median over whole days after day 1 of the "
-    "daily maximum over minimum kinetic energy."
+    "Second-half (days 5-10) means; 2D (r, theta) model; heat in and out through "
+    "the floor strips vs volumetric sink differ because the outcome depends on "
+    "where heat leaves the air. The day/night ratio is the median over whole days "
+    "after day 1 of the daily maximum over minimum kinetic energy."
 )
 
 
@@ -542,7 +553,7 @@ def _annulus_row(name: str, c: Mapping[str, Any]) -> list[str]:
         day_night_contrast(c["energy_series"]) if c.get("energy_series") else None
     )
     return [
-        name,
+        CASE_LABELS.get(name, name),
         f"{c['days']:g}",
         f"{c['nu']:g}",
         "on" if c["coriolis_buoyancy"] else "off",
