@@ -17,6 +17,7 @@ from oneill.atmo.l3_runs import (
     CASES,
     DAY,
     CaseResult,
+    _first_cell,
     case_config,
     case_figures,
     run_case,
@@ -116,6 +117,7 @@ class TestCases:
         cyl = Cylinder()
         primary = case_config(CASES["primary"], cyl)
         assert primary.nu == 1.0
+        assert (primary.n_r, primary.stretch) == (96, 2.4)
         assert primary.coriolis_buoyancy
         assert primary.forcing.period == DAY
         assert primary.forcing.window == "neutral"
@@ -199,6 +201,7 @@ class TestRun:
         ):
             assert key in summary
         assert summary["name"] == "primary"
+        assert summary["first_cell_m"] > 0.0
         assert summary["arrest_low_m"] < summary["arrest_high_m"]
         assert summary["arrest_high_m"] == pytest.approx(
             summary["arrest_low_m"] * 0.18 / 0.08, rel=1e-4
@@ -210,6 +213,17 @@ class TestRun:
         )
         assert summary["rms_wind_10m"] >= 0.0
         assert 0.0 <= summary["lock_fraction"] <= 1.0
+
+    def test_first_cell_width(self, tiny: CaseResult) -> None:
+        production = case_config(CASES["primary"], Cylinder())
+        assert _first_cell(production) == pytest.approx(2.4, abs=0.1)
+        uniform = run_case(
+            CASES["steady"], 0.0005, n_r=16, n_theta=32, stretch=0.0, sample_every=20.0
+        )
+        assert summarize(uniform)["first_cell_m"] == pytest.approx(
+            3200.0 * 0.9 / 16, rel=1e-5
+        )
+        assert summarize(tiny)["first_cell_m"] > 0.0
 
     def test_quiet_run_has_no_arrest_scale(self) -> None:
         quiet = run_case(

@@ -14,7 +14,14 @@ from oneill.adapters.plots import (
 )
 from oneill.atmo.figures import atmosphere_figures
 from oneill.atmo.gas import ONEILL_1974
-from oneill.atmo.l3_runs import CASES, case_figures, run_case, summarize
+from oneill.atmo.l3_runs import (
+    CASES,
+    PRODUCTION_N_R,
+    PRODUCTION_STRETCH,
+    case_figures,
+    run_case,
+    summarize,
+)
 from oneill.atmo.report import FLOOR_TEMPERATURE, build_report
 
 if TYPE_CHECKING:
@@ -65,7 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help=f"L3 summary JSON (default {DEFAULT_L3_SUMMARY})",
     )
-    ap.add_argument("--l3-n-r", type=int, default=64, help="radial cells")
+    ap.add_argument("--l3-n-r", type=int, default=PRODUCTION_N_R, help="radial cells")
+    ap.add_argument(
+        "--l3-stretch",
+        type=float,
+        default=PRODUCTION_STRETCH,
+        help="radial clustering toward the floor",
+    )
     ap.add_argument("--l3-n-theta", type=int, default=256, help="azimuthal points")
     ap.add_argument(
         "--l3-sample-every", type=float, default=1800.0, help="diagnostic interval, s"
@@ -116,6 +129,7 @@ def _run_l3(args: argparse.Namespace, stdout: TextIO) -> None:
             args.l3_days,
             n_r=args.l3_n_r,
             n_theta=args.l3_n_theta,
+            stretch=args.l3_stretch,
             sample_every=args.l3_sample_every,
         )
         wall = time.perf_counter() - start

@@ -33,6 +33,10 @@ if TYPE_CHECKING:
     type Array = NDArray[np.float64]
 
 DAY = 86400.0
+PRODUCTION_N_R = 96
+PRODUCTION_STRETCH = 2.4
+"""96 cells clustered to a 2.4 m floor cell: the 8.9 m grid (64 cells) put only about
+two cells across the 17-20 m heated layer; the winds changed by 3-4 % between them."""
 FLOOR_TEMPERATURE = 290.0
 SAMPLE_EVERY = 1800.0
 ENERGY_POINTS = 60
@@ -90,7 +94,11 @@ CASES: dict[str, Case] = {
 
 
 def case_config(
-    case: Case, cyl: Cylinder, n_r: int = 64, n_theta: int = 256
+    case: Case,
+    cyl: Cylinder,
+    n_r: int = PRODUCTION_N_R,
+    n_theta: int = 256,
+    stretch: float = PRODUCTION_STRETCH,
 ) -> AnnulusConfig:
     """The model configuration of ``case`` for habitat ``cyl``."""
     gas = SP413.at_temperature(FLOOR_TEMPERATURE)  # the half-atmosphere habitat
@@ -110,6 +118,7 @@ def case_config(
         tau_relax=DAY if case.heating == "uniform_sink" else None,
         n_r=n_r,
         n_theta=n_theta,
+        stretch=stretch,
     )
 
 
@@ -132,8 +141,9 @@ def run_case(  # noqa: PLR0913
     days: float,
     *,
     cyl: Cylinder | None = None,
-    n_r: int = 64,
+    n_r: int = PRODUCTION_N_R,
     n_theta: int = 256,
+    stretch: float = PRODUCTION_STRETCH,
     sample_every: float = SAMPLE_EVERY,
     seed: int = 0,
     dt_max: float = 10.0,
@@ -144,7 +154,7 @@ def run_case(  # noqa: PLR0913
     ``progress(t, energy)`` is called at each sample.
     """
     habitat = Cylinder() if cyl is None else cyl
-    config = case_config(case, habitat, n_r, n_theta)
+    config = case_config(case, habitat, n_r, n_theta, stretch)
     model = Annulus(config)
     state = model.initial_state(seed=seed)
     samples: list[Sample] = []
@@ -168,6 +178,16 @@ def run_case(  # noqa: PLR0913
         theta=np.array(model.theta),
         zeta=model.to_phys(state.zeta),
         temp=model.to_phys(state.temp),
+    )
+
+
+def _first_cell(cfg: AnnulusConfig) -> float:
+    """Width in m of the cell next to the floor."""
+    gap = cfg.radius * (1.0 - cfg.r_in_fraction)
+    if cfg.stretch == 0.0:
+        return gap / cfg.n_r
+    return gap * (
+        1.0 - math.tanh(cfg.stretch * (1.0 - 1.0 / cfg.n_r)) / math.tanh(cfg.stretch)
     )
 
 
@@ -208,6 +228,7 @@ def summarize(result: CaseResult) -> dict[str, Any]:
         "days": _round(float(t[-1] / DAY)),
         "steps": result.steps,
         "n_r": cfg.n_r,
+        "first_cell_m": _round(_first_cell(cfg)),
         "n_theta": cfg.n_theta,
         "nu": cfg.nu,
         "r_in_fraction": cfg.r_in_fraction,
