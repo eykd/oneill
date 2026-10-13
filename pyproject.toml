@@ -88,6 +88,6 @@ exclude_also = [
 root_package = "oneill"
 
 [[tool.importlinter.contracts]]
-name = "Hexagonal layers: adapters -> motion -> core"
+name = "Hexagonal layers: adapters -> motion | atmo -> core"
 type = "layers"
-layers = ["oneill.adapters", "oneill.motion", "oneill.core"]
+layers = ["oneill.adapters", "oneill.motion | oneill.atmo", "oneill.core"]
