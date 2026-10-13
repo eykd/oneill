@@ -1,3 +1,4 @@
+import cmath
 import math
 from typing import TYPE_CHECKING
 
@@ -54,8 +55,14 @@ class TestElementary:
     def test_ekman_depth_matches_research_table(self, nu: float, depth: float) -> None:
         assert ekman_depth(nu, OMEGA) == pytest.approx(depth, abs=0.05, rel=0.02)
 
-    def test_ekman_depth_is_sqrt_two_nu_over_f(self) -> None:
-        assert ekman_depth(1.0, OMEGA) == pytest.approx(math.sqrt(2.0 / (2.0 * OMEGA)))
+    @pytest.mark.parametrize("nu", [3.0e-5, 1.0, 10.0])
+    def test_ekman_depth_is_the_decay_scale_of_the_ekman_solution(
+        self, nu: float
+    ) -> None:
+        # nu w'' = 2 i omega w has solution exp(-k z) with k = sqrt(2 i omega / nu);
+        # the amplitude decays as exp(-z / delta) with delta = 1 / Re(k).
+        k = cmath.sqrt(2j * OMEGA / nu)
+        assert ekman_depth(nu, OMEGA) == pytest.approx(1.0 / k.real, rel=1e-12)
 
     @pytest.mark.parametrize(("nu", "hours"), [(0.1, 37.0), (1.0, 11.8), (10.0, 3.7)])
     def test_spin_up_time_matches_research_table(self, nu: float, hours: float) -> None:
@@ -82,12 +89,12 @@ class TestElementary:
         )  # E < 1, so E^(1/3) < E^(1/4)
 
     @given(st.floats(1e-6, 100.0), st.floats(1e-3, 1.0), st.floats(10.0, 1e5))
-    def test_spin_up_is_ekman_time_over_sqrt_e(
-        self, nu: float, omega: float, half: float
-    ) -> None:
-        # tau = H / sqrt(nu omega) = (1 / omega) E^(-1/2)
-        e = ekman_number(nu, omega, half)
-        assert spin_up_time(nu, omega, half) == pytest.approx(e**-0.5 / omega)
+    def test_spin_up_scaling_laws(self, nu: float, omega: float, half: float) -> None:
+        tau = spin_up_time(nu, omega, half)
+        assert spin_up_time(4.0 * nu, omega, half) == pytest.approx(tau / 2.0)
+        assert spin_up_time(nu, omega, 3.0 * half) == pytest.approx(3.0 * tau)
+        # the Ekman layer's diffusion-rotation speed delta * omega turns H into tau
+        assert tau == pytest.approx(half / (omega * ekman_depth(nu, omega)))
 
     def test_shedding(self) -> None:
         f = shedding_frequency(3.0, 10.0)

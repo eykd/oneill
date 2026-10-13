@@ -12,6 +12,12 @@ profile inside it, joined with continuous speed *and* shear. The exponential
 attenuation coefficient is therefore not a free parameter: it is fixed by shear
 continuity at canopy top (:attr:`Terrain.attenuation`).
 
+Caveat: the canopy attenuation implied by shear continuity is small for the
+suburb (0.87, against roughly 1-3 in Macdonald-type urban fits), and the whole
+profile is an area-averaged canopy result. The unstable band it predicts is a
+property of that horizontally averaged profile; near-wall shear around individual
+buildings is not represented.
+
 Rotational stability follows Brethouwer (2017, JFM 828:424): with
 ``S = -2 Omega / U'`` and ``U' = dU/dz`` of the spinward component, the Bradshaw
 number ``B = S (S + 1)`` is negative (shear turbulence *augmented*) exactly for
@@ -38,6 +44,13 @@ SIGMA_U_OVER_USTAR = 2.35
 
 PEAK_FACTOR = 3.0
 """Gaussian peak factor for a ~3 s gust in a 10 min record (our estimate, MED)."""
+
+
+CANOPY_NOTE = (
+    "area-averaged canopy profile; near-wall shear around individual buildings "
+    "is not represented"
+)
+"""Caveat attached to stability results."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +82,9 @@ class Terrain:
     def attenuation(self) -> float:
         """Exponential canopy attenuation ``a = h_c / ((h_c - d) ln((h_c - d)/z0))``.
 
-        Chosen so that ``dU/dz`` is continuous across the canopy top.
+        Chosen so that ``dU/dz`` is continuous across the canopy top. For the
+        suburb this is 0.87, low next to Macdonald-type urban fits of about 1-3,
+        so in-canopy winds there are probably overestimated.
         """
         gap = self.h_c - self.d
         return self.h_c / (gap * math.log(gap / self.z0))
@@ -102,12 +117,14 @@ class StabilityProfile:
         shear: Spinward-component shear ``U'`` in 1/s.
         bradshaw: ``B = S (S + 1)``; NaN where there is no spinward shear.
         classification: :class:`Stability` values as an integer array.
+        note: Reminder that the profile is an area-averaged canopy result.
     """
 
     z: NDArray[np.float64]
     shear: NDArray[np.float64]
     bradshaw: NDArray[np.float64]
     classification: NDArray[np.int8]
+    note: str = CANOPY_NOTE
 
 
 def _heights(z: ArrayLike) -> NDArray[np.float64]:
@@ -280,6 +297,8 @@ def unstable_layer(
     (2-7 m above ``d`` for ``u*`` of 0.1-0.3 m/s, Q5). Inside the canopy the shear
     falls off exponentially, giving ``z_low = h_c (1 + ln(2 omega / U'_top)/a)``,
     floored at 0.
+
+    This is an area-averaged canopy result (:data:`CANOPY_NOTE`).
 
     Returns:
         ``None`` if the shear at canopy top is already at most ``2 omega``.

@@ -54,6 +54,7 @@ class CloudBase:
     """Lifting condensation level of a rising dry-adiabatic parcel.
 
     Attributes:
+        label: Gas preset and floor temperature the number belongs to.
         temperature: Parcel temperature at the LCL in K.
         phi: Geopotential of the LCL in J/kg.
         earth_equivalent_height: ``phi / g`` in m: the height at which Earth's
@@ -63,6 +64,7 @@ class CloudBase:
             above the axis (the parcel never condenses before reaching it).
     """
 
+    label: str
     temperature: float
     phi: float
     earth_equivalent_height: float
@@ -218,8 +220,13 @@ def lifting_condensation_level(
     Bolton (1980, Mon. Weather Rev. 108:1046, eq. 22) gives the LCL temperature
     ``T_L = 1 / (1 / (T - 55) - ln(RH) / 2840) + 55`` (K). The parcel cools
     dry-adiabatically, so the LCL geopotential is ``c_p (T - T_L)``, then
-    converted to true height and to Earth-equivalent height. The constants are
-    for air; they are used unchanged for the SP-413 mixture.
+    converted to true height and to Earth-equivalent height.
+
+    Bolton's constants embed air's ``R_s / c_p = 0.2854`` (and the Magnus
+    saturation curve), so for the SP-413 mixture (``R_s / c_p`` about 0.284) the
+    LCL temperature is used unchanged; the effect on the result is well under
+    1 %. The result carries ``gas.label`` so the preset and temperature travel
+    with the number.
 
     Args:
         cyl: The habitat.
@@ -239,6 +246,7 @@ def lifting_condensation_level(
         height_from_geopotential(cyl, phi) if phi <= axis_geopotential(cyl) else None
     )
     return CloudBase(
+        label=gas.label,
         temperature=t_lcl,
         phi=phi,
         earth_equivalent_height=earth_equivalent_height(phi),

@@ -316,6 +316,12 @@ class TestCloudBase:
         spread = 290.0 - magnus_dew_point(290.0, rh)
         assert cloud.earth_equivalent_height == pytest.approx(125.0 * spread, rel=0.1)
 
+    def test_result_is_labelled_with_preset_and_temperature(
+        self, default_cyl: Cylinder
+    ) -> None:
+        cloud = lifting_condensation_level(default_cyl, SP_290, 0.5)
+        assert cloud.label == "SP-413 at 290.0 K"
+
     def test_saturated_air_condenses_at_the_floor(self, default_cyl: Cylinder) -> None:
         cloud = lifting_condensation_level(default_cyl, AIR_290, 1.0)
         assert cloud.phi == 0.0

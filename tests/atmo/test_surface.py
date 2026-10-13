@@ -48,10 +48,11 @@ class TestTerrain:
         assert 1.0 <= FOREST.z0 <= 2.0
         assert 0.5 <= ORCHARD.z0 <= 1.0
 
-    def test_attenuation_formula(self) -> None:
-        gap = SUBURBAN.h_c - SUBURBAN.d
-        expected = SUBURBAN.h_c / (gap * math.log(gap / SUBURBAN.z0))
-        assert SUBURBAN.attenuation == expected
+    def test_attenuation_values(self) -> None:
+        # hand values: 10 / (5 ln 10), 6 / (2 ln(10/3)), 15 / (5 ln(10/3))
+        assert SUBURBAN.attenuation == pytest.approx(0.8686, abs=1e-3)
+        assert ORCHARD.attenuation == pytest.approx(2.4919, abs=1e-3)
+        assert FOREST.attenuation == pytest.approx(2.4919, abs=1e-3)
 
     def test_frozen(self) -> None:
         with pytest.raises(FrozenInstanceError):
@@ -308,6 +309,39 @@ class TestRotationalStability:
     def test_fraction_range(self, fraction: float) -> None:
         with pytest.raises(ValueError, match="spinward"):
             rotational_stability_profile([5.0], 0.3, SUBURBAN, OMEGA, fraction)
+
+
+class TestRayleighCriterion:
+    """Pin the classifier to the physical frame via angular momentum."""
+
+    @staticmethod
+    def angular_momentum(r: float, shear: float) -> float:
+        # absolute angular momentum per unit mass of air at radius r = R - z, with
+        # spinward relative wind U(z) = shear * z
+        z = CYL_R - r
+        return r * (OMEGA * r + shear * z)
+
+    @given(
+        st.floats(-6.0, 6.0).filter(lambda f: abs(f - 1.0) > 0.03),
+        st.floats(1.0, 20.0),
+    )
+    def test_unstable_iff_angular_momentum_decreases_outward(
+        self, factor: float, z: float
+    ) -> None:
+        shear = factor * 2.0 * OMEGA
+        r, dr = CYL_R - z, 1e-3
+        dl_dr = (
+            self.angular_momentum(r + dr, shear) - self.angular_momentum(r - dr, shear)
+        ) / (2.0 * dr)
+        unstable = classify_rotational_stability(shear, OMEGA) is Stability.UNSTABLE
+        assert unstable == (dl_dr < 0.0)
+
+    def test_antispinward_and_axial_have_no_decrease(self) -> None:
+        assert classify_rotational_stability(-0.3, OMEGA) is Stability.STABLE
+        assert classify_rotational_stability(0.0, OMEGA) is Stability.NEUTRAL
+
+
+CYL_R = Cylinder().radius
 
 
 class TestUnstableLayer:

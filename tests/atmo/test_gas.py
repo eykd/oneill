@@ -1,5 +1,6 @@
 import math
 from dataclasses import FrozenInstanceError, replace
+from typing import Any
 
 import pytest
 from hypothesis import given
@@ -21,7 +22,7 @@ class TestEarthAir:
         assert ONEILL_1974.cv == pytest.approx(ONEILL_1974.cp - 287.05, rel=1e-3)
 
     def test_viscosity_at_288k(self) -> None:
-        assert ONEILL_1974.viscosity(288.0) == pytest.approx(1.79e-5, rel=5e-3)
+        assert ONEILL_1974.viscosity(288.0) == pytest.approx(1.79e-5, rel=1e-2)
 
     def test_viscosity_defaults_to_floor_temperature(self) -> None:
         assert ONEILL_1974.viscosity() == ONEILL_1974.viscosity(288.15)
@@ -36,30 +37,66 @@ class TestEarthAir:
 
 
 class TestSp413:
-    def test_pressure_and_oxygen_partial_pressure(self) -> None:
-        assert SP413.p_rim == 50.8e3
-        assert SP413.x_o2 * 49.7 == pytest.approx(22.7, rel=1e-12)
+    def test_dry_partials_and_vapour(self) -> None:
+        assert SP413.p_rim == 49.7e3
+        assert SP413.p_vapour == 1.0e3
+        assert SP413.p_total == pytest.approx(50.7e3)
+        assert SP413.x_o2 * SP413.p_rim == pytest.approx(22.7e3, rel=1e-12)
+        assert SP413.x_n2 * SP413.p_rim == pytest.approx(26.6e3, rel=1e-12)
         assert SP413.x_o2 == pytest.approx(0.45, abs=0.01)
 
     def test_is_half_an_atmosphere(self) -> None:
-        assert SP413.p_rim / ONEILL_1974.p_rim == pytest.approx(0.5, abs=0.01)
-
-    def test_half_atm_air_matches_research_viscosity(self) -> None:
-        # The research table's 3.0e-5 m^2/s is *air* at half an atmosphere.
-        half_atm_air = replace(ONEILL_1974, p_rim=50.8e3, temperature=288.0)
-        assert half_atm_air.nu == pytest.approx(3.0e-5, rel=0.05)
-        assert half_atm_air.rho_rim * half_atm_air.cp == pytest.approx(603.0, rel=0.03)
-
-    def test_oxygen_rich_mixture_is_denser_so_less_viscous_than_air(self) -> None:
-        # mu is the same Sutherland value; rho scales with molar mass.
-        air = replace(ONEILL_1974, p_rim=50.8e3, temperature=288.0)
-        mix = SP413.at_temperature(288.0)
-        expected = air.nu * ONEILL_1974.molar_mass / SP413.molar_mass
-        assert mix.nu == pytest.approx(expected, rel=1e-12)
-        assert mix.nu == pytest.approx(2.81e-5, rel=0.01)
+        assert SP413.p_total / ONEILL_1974.p_rim == pytest.approx(0.5, abs=0.01)
 
     def test_fractions_sum_to_one(self) -> None:
         assert SP413.x_o2 + SP413.x_n2 + SP413.x_co2 == pytest.approx(1.0, abs=1e-15)
+
+    def test_half_atm_kinematic_viscosity_and_heat_capacity(self) -> None:
+        # research table: nu ~ 3.0e-5 m^2/s, rho c_p ~ 603 J/(m^3 K) at 288 K
+        gas = SP413.at_temperature(288.0)
+        assert gas.nu == pytest.approx(3.0e-5, rel=0.04)
+        assert gas.rho_rim * gas.cp == pytest.approx(603.0, rel=0.02)
+
+    def test_o2_rich_mixture_is_not_less_viscous_than_air(self) -> None:
+        # O2 is more viscous than N2, so the mixture mu exceeds air's; at equal
+        # pressure the denser mixture's nu is about the same as air's.
+        air = replace(ONEILL_1974, p_rim=SP413.p_rim, temperature=288.0)
+        mix = SP413.at_temperature(288.0)
+        assert mix.viscosity() > air.viscosity()
+        assert mix.nu == pytest.approx(air.nu, rel=0.02)
+
+
+class TestWilkeViscosity:
+    def test_pure_species_limits(self) -> None:
+        # reference viscosities of the Sutherland tabulation
+        assert Gas(1.0, 0.0).viscosity(300.55) == pytest.approx(2.018e-5, rel=1e-12)
+        assert Gas(0.0, 1.0).viscosity(300.55) == pytest.approx(1.781e-5, rel=1e-12)
+        assert Gas(0.0, 0.0, 1.0).viscosity(273.15) == pytest.approx(
+            2.125e-5, rel=1e-12
+        )
+        assert Gas(0.0, 0.0, 0.0, 1.0).viscosity(300.55) == pytest.approx(
+            1.48e-5, rel=1e-12
+        )
+
+    def test_air_matches_published_values(self) -> None:
+        # CRC / US Standard Atmosphere: 1.789e-5 at 288.15 K, 1.846e-5 at 300 K
+        assert ONEILL_1974.viscosity(288.15) == pytest.approx(1.789e-5, rel=1e-2)
+        assert ONEILL_1974.viscosity(300.0) == pytest.approx(1.846e-5, rel=1e-2)
+
+    @given(st.floats(0.0, 1.0), st.floats(200.0, 500.0))
+    def test_binary_mixture_lies_between_pure_species(self, x: float, t: float) -> None:
+        mix = Gas(x, 1.0 - x).viscosity(t)
+        pure = sorted((Gas(1.0, 0.0).viscosity(t), Gas(0.0, 1.0).viscosity(t)))
+        assert pure[0] * (1 - 1e-12) <= mix <= pure[1] * (1 + 1e-12)
+
+    def test_label(self) -> None:
+        assert ONEILL_1974.label == "O'Neill 1974 at 288.1 K"
+        assert SP413.at_temperature(290.0).label == "SP-413 at 290.0 K"
+        assert Gas(0.2, 0.8).name == "custom"
+
+    def test_negative_vapour_pressure_rejected(self) -> None:
+        with pytest.raises(ValueError, match="p_vapour"):
+            Gas(0.2, 0.8, p_vapour=-1.0)
 
 
 class TestGasObject:
@@ -84,7 +121,7 @@ class TestGasObject:
             {"x_o2": 0.2, "x_n2": 0.8, "temperature": -1.0},
         ],
     )
-    def test_rejects_invalid(self, kwargs: dict[str, float]) -> None:
+    def test_rejects_invalid(self, kwargs: dict[str, Any]) -> None:
         with pytest.raises(ValueError, match="must"):
             Gas(**kwargs)
 
