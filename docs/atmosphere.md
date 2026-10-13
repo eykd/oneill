@@ -91,13 +91,13 @@ Floor condition for every row: canopy drag, C_D = 0.0178 (suburb, z0 = 0.5 m). H
 | Hull ramp | nu_t (m2/s) | End caps | time to 90 % co-rotation | peak wind at 10 m (m/s) | peak wind anywhere (m/s) | peak Ro | linear cap sink valid |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 60 min | 1 | on | 23.0 h | 18.3 | 159.3 | 0.57 | no (order of magnitude) |
-| 60 min | 1 | off | 14 d | 18.6 | 165.2 | 0.59 | no (order of magnitude) |
+| 60 min | 1 | off | 14 d | 18.6 | 165.2 | 0.59 | n/a (no end caps) |
 | 60 min | 10 | on | 6.8 h | 23.1 | 131.5 | 0.46 | no (order of magnitude) |
-| 60 min | 10 | off | 38.0 h | 24.1 | 147.2 | 0.52 | no (order of magnitude) |
+| 60 min | 10 | off | 38.0 h | 24.1 | 147.2 | 0.52 | n/a (no end caps) |
 | 24.0 h | 1 | on | 37.7 h | 5.3 | 66.3 | 0.25 | yes |
-| 24.0 h | 1 | off | 15 d | 6.8 | 133.6 | 0.51 | no (order of magnitude) |
+| 24.0 h | 1 | off | 15 d | 6.8 | 133.6 | 0.51 | n/a (no end caps) |
 | 24.0 h | 10 | on | 24.3 h | 6.2 | 24.5 | 0.11 | yes |
-| 24.0 h | 10 | off | 2 d | 8.9 | 74.5 | 0.46 | no (order of magnitude) |
+| 24.0 h | 10 | off | 2 d | 8.9 | 74.5 | 0.46 | n/a (no end caps) |
 
 Sudden change of the hull spin rate, with a Rayleigh-switched viscosity (larger where angular momentum falls outward). With end caps the sink rate scales with the new hull rate, so spin-down is the slower of the pair.
 
@@ -107,6 +107,14 @@ Sudden change of the hull spin rate, with a Rayleigh-switched viscosity (larger 
 | +10% | 1 / 10 | on | 22.0 h |
 | -10% | 1 / 10 | off | 15 d |
 | +10% | 1 / 10 | off | 15 d |
+
+Sensitivity of the time to 90 % adjustment (nu_t 1 / 10, end caps on) to the blend width of the viscosity closure: small for 10 % changes, larger for 50 %.
+
+| Hull spin change (end caps on) | blend width 0.15 | blend width 0.3 | blend width 0.6 |
+| --- | --- | --- | --- |
+| -10% | 24.0 h | 23.8 h | 22.8 h |
+| +10% | 22.0 h | 22.0 h | 21.5 h |
+| -50% | 28.1 h | 27.5 h | 25.4 h |
 
 Steady lag wind while the hull changes speed by 1 % per day (spin-up: the air lags, so the wind is negative).
 

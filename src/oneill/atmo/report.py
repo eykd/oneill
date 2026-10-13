@@ -76,6 +76,8 @@ PARCEL_DRAGS = (0.0, 0.01, 0.05)
 RAMPS = (3600.0, 86400.0)
 EDDY_VISCOSITIES = (1.0, 10.0)
 FLOOR_LABEL = f"canopy drag, C_D = {DEFAULT_FLOOR_DRAG:.4f} (suburb, z0 = 0.5 m)"
+BLEND_WIDTHS = (0.15, 0.3, 0.6)
+"""Closure blend widths tried in the sensitivity rows."""
 STEP = 0.1
 """Fractional hull spin change used in the sudden-change rows."""
 LAG_FRACTION_PER_DAY = 0.01
@@ -251,6 +253,15 @@ class SuddenRow:
 
 
 @dataclass(frozen=True, slots=True)
+class BlendRow:
+    """Sensitivity of a sudden-change adjustment time to the closure blend width."""
+
+    delta_fraction: float
+    widths: tuple[float, ...]
+    times: tuple[float | None, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class LagRow:
     """Steady wind lag for a hull spin change of 1 % per day."""
 
@@ -293,6 +304,7 @@ class AtmosphereReport:
     parcels: tuple[ParcelRow, ...]
     spin: tuple[SpinRow, ...]
     sudden: tuple[SuddenRow, ...]
+    blend: tuple[BlendRow, ...]
     lag: tuple[LagRow, ...]
     molecular: tuple[MolecularRow, ...]
     snapshots: tuple[Snapshot, ...]
@@ -478,6 +490,18 @@ def _sudden_rows(cyl: Cylinder) -> tuple[SuddenRow, ...]:
     return tuple(rows)
 
 
+def _blend_rows(cyl: Cylinder) -> tuple[BlendRow, ...]:
+    rows = []
+    for delta in (-STEP, STEP, -0.5):
+        times = []
+        for width in BLEND_WIDTHS:
+            params = SpinupParams(1.0, nu_unstable=10.0, n_cells=100, blend_width=width)
+            run = sudden_change(cyl, params, delta * cyl.omega, t_max=3.0e7)
+            times.append(time_to_adjust(run))
+        rows.append(BlendRow(delta, BLEND_WIDTHS, tuple(times)))
+    return tuple(rows)
+
+
 def _lag_rows(cyl: Cylinder) -> tuple[LagRow, ...]:
     alpha = LAG_FRACTION_PER_DAY * cyl.omega / 86400.0
     rows = []
@@ -547,6 +571,7 @@ def _build(habitat: Cylinder) -> AtmosphereReport:
         parcels=_parcel_rows(habitat, gases[0]),
         spin=spin,
         sudden=_sudden_rows(habitat),
+        blend=_blend_rows(habitat),
         lag=_lag_rows(habitat),
         molecular=_molecular_rows(habitat, gases),
         snapshots=snapshots,

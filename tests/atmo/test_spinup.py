@@ -367,6 +367,23 @@ class TestRegimes:
     def test_strong_spin_down_is_faster_when_the_regimes_differ(self) -> None:
         assert self.adjust(-0.5) < 0.95 * self.adjust(0.5)
 
+    def test_blend_width_matters_more_for_strong_changes(self) -> None:
+        def adjust(delta: float, width: float) -> float:
+            params = noslip(
+                1.0, nu_unstable=10.0, endcap=False, n_cells=100, blend_width=width
+            )
+            run = sudden_change(
+                SMALL, params, delta * SMALL.omega, dt_max=20.0, t_max=5e4
+            )
+            t = time_to_adjust(run)
+            assert t is not None
+            return t
+
+        weak = [adjust(-0.1, w) for w in (0.15, 0.3)]
+        strong = [adjust(-0.5, w) for w in (0.15, 0.3)]
+        assert abs(weak[0] / weak[1] - 1.0) < 0.05
+        assert abs(strong[0] / strong[1] - 1.0) > 0.05
+
     def test_symmetric_when_regimes_agree(self) -> None:
         params = noslip(3.0, endcap=False, n_cells=100)
         down = time_to_adjust(sudden_change(SMALL, params, -0.5 * SMALL.omega))
@@ -495,6 +512,8 @@ class TestValidation:
             SpinupParams(1.0, stretch=-1.0)
         with pytest.raises(ValueError, match="theta"):
             SpinupParams(1.0, theta=0.4)
+        with pytest.raises(ValueError, match="blend_width"):
+            SpinupParams(1.0, blend_width=0.0)
 
     def test_nu_high_and_nu_cap_default_to_stable(self) -> None:
         assert SpinupParams(2.0).nu_high == 2.0

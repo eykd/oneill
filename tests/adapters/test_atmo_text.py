@@ -66,6 +66,8 @@ class TestRendering:
         assert "60 min" in text
         assert "23.0 h" in text
         assert " d |" in text
+        assert "n/a (no end caps)" in text
+        assert "blend width 0.15" in text
 
 
 class TestReplaceBlocks:

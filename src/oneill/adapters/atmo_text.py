@@ -314,6 +314,12 @@ def render_parcel(report: AtmosphereReport) -> str:
     return f"{caption}\n\n{table}\n\n{_caveat(report, 'parcel')}"
 
 
+def _validity(endcap: bool, valid: bool) -> str:  # noqa: FBT001
+    if not endcap:
+        return "n/a (no end caps)"
+    return "yes" if valid else "no (order of magnitude)"
+
+
 def render_spinup(report: AtmosphereReport) -> str:
     """Spin-up, spin-down and lag-wind numbers."""
     floor = report.spin[0].floor
@@ -337,7 +343,7 @@ def render_spinup(report: AtmosphereReport) -> str:
                 _num(r.peak_wind_ref, 1),
                 _num(r.peak_wind_interior, 1),
                 _num(r.max_rossby, 2),
-                "yes" if r.sink_valid else "no (order of magnitude)",
+                _validity(r.endcap, r.sink_valid),
             ]
             for r in report.spin
         ],
@@ -357,6 +363,14 @@ def render_spinup(report: AtmosphereReport) -> str:
                 _duration(s.time_to_adjust),
             ]
             for s in report.sudden
+        ],
+    )
+    widths = report.blend[0].widths
+    blend = _table(
+        ["Hull spin change (end caps on)", *[f"blend width {w:g}" for w in widths]],
+        [
+            [f"{b.delta_fraction:+.0%}", *[_duration(t) for t in b.times]]
+            for b in report.blend
         ],
     )
     lag = _table(
@@ -401,6 +415,12 @@ def render_spinup(report: AtmosphereReport) -> str:
             "pair."
         ),
         sudden,
+        (
+            "Sensitivity of the time to 90 % adjustment (nu_t 1 / 10, end caps on) "
+            "to the blend width of the viscosity closure: small for 10 % changes, "
+            "larger for 50 %."
+        ),
+        blend,
         (
             "Steady lag wind while the hull changes speed by 1 % per day "
             "(spin-up: the air lags, so the wind is negative)."

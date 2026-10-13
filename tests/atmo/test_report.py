@@ -130,6 +130,21 @@ def test_sudden_changes_are_nearly_symmetric_and_spin_down_is_slower(
     assert down.time_to_adjust / up.time_to_adjust == pytest.approx(1.08, abs=0.04)
 
 
+def test_blend_width_sensitivity_is_reported(report: AtmosphereReport) -> None:
+    assert [b.delta_fraction for b in report.blend] == [-0.1, 0.1, -0.5]
+    for row in report.blend:
+        assert row.widths == (0.15, 0.3, 0.6)
+        assert all(t is not None for t in row.times)
+    mild, strong = report.blend[0], report.blend[2]
+    assert mild.times[0] is not None
+    assert mild.times[2] is not None
+    assert strong.times[0] is not None
+    assert strong.times[2] is not None
+    assert abs(strong.times[2] / strong.times[0] - 1.0) > abs(
+        mild.times[2] / mild.times[0] - 1.0
+    )
+
+
 def test_reference_run_data(report: AtmosphereReport) -> None:
     assert len(report.snapshots) == 5
     assert report.corotation[0] == 0.0

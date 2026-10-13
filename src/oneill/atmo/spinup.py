@@ -72,6 +72,9 @@ DRAG_HEIGHT = 10.0
 DEFAULT_FLOOR_DRAG = drag_coefficient(DRAG_HEIGHT, SUBURBAN.z0)
 """``C_D`` for the suburban roughness (z0 = 0.5 m) at 10 m: about 0.018."""
 
+BLEND_WIDTH = 0.3
+"""Default width of the viscosity-regime blend (normalised discriminant units)."""
+
 LINEAR_SINK_ROSSBY = 0.3
 """Largest Rossby number for which the linear end-cap sink is trusted."""
 
@@ -80,7 +83,6 @@ _LAG_ITERATIONS = 80
 _PICARD_ITERATIONS = 3
 _STARTUP_STEPS = 2
 _MIN_CELLS = 8
-_BLEND_WIDTH = 0.3
 _BLEND_FLOOR = 0.2
 _TINY = 1e-12
 
@@ -107,6 +109,8 @@ class SpinupParams:
             cell is about ``R/n`` times ``beta / cosh^2(beta)``).
         theta: Time-scheme weight, ``1`` backward Euler (default), ``0.5``
             Crank-Nicolson.
+        blend_width: Width of the tanh blend between the viscosity regimes, in
+            units of the normalised Rayleigh discriminant (a closure choice).
     """
 
     nu_stable: float
@@ -118,6 +122,7 @@ class SpinupParams:
     n_cells: int = 120
     stretch: float = 2.5
     theta: float = 1.0
+    blend_width: float = BLEND_WIDTH
 
     def __post_init__(self) -> None:
         """Validate the viscosities, drag, grid size and scheme weight."""
@@ -127,6 +132,7 @@ class SpinupParams:
         if self.nu_endcap is not None:
             positive("nu_endcap", self.nu_endcap)
         positive("drag_height", self.drag_height)
+        positive("blend_width", self.blend_width)
         if self.floor_drag is not None and not (
             math.isfinite(self.floor_drag) and self.floor_drag >= 0.0
         ):
@@ -429,7 +435,7 @@ class _Model:
             q[-1] = -(2.0 * omega - u[-1] / (g.faces[-1] - g.centres[-1])) / (
                 2.0 * abs(omega) + _BLEND_FLOOR * abs(omega) + _TINY
             )
-        weight = 0.5 * (1.0 + np.tanh(q / _BLEND_WIDTH))
+        weight = 0.5 * (1.0 + np.tanh(q / p.blend_width))
         return p.nu_stable + (p.nu_high - p.nu_stable) * weight
 
     def operator(self, nu: NDArray[np.float64], u: NDArray[np.float64]) -> _Operator:
