@@ -49,7 +49,10 @@ ignore = ["CPY001", "D203", "D213", "COM812", "ISC001"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/oneill/adapters/plots.py" = ["TID251"]
-"tests/**" = ["S101", "PLR2004", "D", "TID251"]
+"tests/**" = ["S101", "PLR2004", "D", "TID251", "N803", "N806"]
+
+[tool.ruff.lint.pylint]
+max-args = 8
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
