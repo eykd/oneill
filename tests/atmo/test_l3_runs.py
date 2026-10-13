@@ -125,6 +125,12 @@ class TestCases:
         assert primary.rho_cp == pytest.approx(
             603.0, rel=0.03
         )  # the half-atmosphere air
+        assert primary.forcing.edge_width == 0.0
+        smoothed = case_config(CASES["primary"], cyl, n_theta=256, edge_cells=2.0)
+        assert smoothed.forcing.edge_width == pytest.approx(2.0 * 2.0 * math.pi / 256.0)
+        for name in ("steady", "uniform_sink"):
+            soft = case_config(CASES[name], cyl, n_theta=128, edge_cells=1.0)
+            assert soft.forcing.edge_width == pytest.approx(2.0 * math.pi / 128.0)
         assert not case_config(CASES["cb_off"], cyl).coriolis_buoyancy
         assert case_config(CASES["nu10"], cyl).nu == 10.0
         assert case_config(CASES["rin005"], cyl).r_in_fraction == 0.05

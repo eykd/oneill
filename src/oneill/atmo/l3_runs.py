@@ -99,15 +99,23 @@ def case_config(
     n_r: int = PRODUCTION_N_R,
     n_theta: int = 256,
     stretch: float = PRODUCTION_STRETCH,
+    edge_cells: float = 0.0,
 ) -> AnnulusConfig:
-    """The model configuration of ``case`` for habitat ``cyl``."""
+    """The model configuration of ``case`` for habitat ``cyl``.
+
+    ``edge_cells`` smooths the strip edges over that many azimuthal grid spacings
+    (``0``: step edges).
+    """
+    width = edge_cells * 2.0 * math.pi / n_theta
     gas = SP413.at_temperature(FLOOR_TEMPERATURE)  # the half-atmosphere habitat
     if case.heating == "steady":
-        forcing = Forcing(land_flux=STEADY_FLUX)
+        forcing = Forcing(land_flux=STEADY_FLUX, edge_width=width)
     elif case.heating == "uniform_sink":
-        forcing = Forcing(DAY_FLUX, NIGHT_FLUX, period=DAY, window="zero")
+        forcing = Forcing(
+            DAY_FLUX, NIGHT_FLUX, period=DAY, window="zero", edge_width=width
+        )
     else:
-        forcing = Forcing(DAY_FLUX, NIGHT_FLUX, period=DAY)
+        forcing = Forcing(DAY_FLUX, NIGHT_FLUX, period=DAY, edge_width=width)
     return AnnulusConfig.from_habitat(
         cyl,
         gas,
@@ -144,6 +152,7 @@ def run_case(  # noqa: PLR0913
     n_r: int = PRODUCTION_N_R,
     n_theta: int = 256,
     stretch: float = PRODUCTION_STRETCH,
+    edge_cells: float = 0.0,
     sample_every: float = SAMPLE_EVERY,
     seed: int = 0,
     dt_max: float = 10.0,
@@ -154,7 +163,7 @@ def run_case(  # noqa: PLR0913
     ``progress(t, energy)`` is called at each sample.
     """
     habitat = Cylinder() if cyl is None else cyl
-    config = case_config(case, habitat, n_r, n_theta, stretch)
+    config = case_config(case, habitat, n_r, n_theta, stretch, edge_cells)
     model = Annulus(config)
     state = model.initial_state(seed=seed)
     samples: list[Sample] = []

@@ -60,6 +60,23 @@ class TestForcing:
         assert f.land_level(64800.0) == pytest.approx(-30.0)
         assert Forcing(land_flux=70.0).land_level(12345.0) == 70.0
 
+    def test_smoothed_edges_keep_the_pattern_and_the_zero_net_flux(self) -> None:
+        theta = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
+        hard = Forcing(land_flux=200.0).flux(theta, 0.0)
+        smooth = Forcing(land_flux=200.0, edge_width=0.05).flux(theta, 0.0)
+        assert np.mean(smooth) == pytest.approx(0.0, abs=1e-9)
+        assert np.max(np.abs(np.diff(smooth))) < 0.5 * np.max(np.abs(np.diff(hard)))
+        interior = np.abs(np.sin(3.0 * theta)) > 0.6
+        assert smooth[interior] == pytest.approx(hard[interior], abs=2.0)
+        # the edge value is the mean of land and window
+        edge = Forcing(land_flux=200.0, edge_width=0.05).flux(
+            np.array([math.pi / 3.0]), 0.0
+        )
+        assert edge[0] == pytest.approx(0.0, abs=1e-9)
+        tiny = Forcing(land_flux=200.0, edge_width=1e-6).flux(theta, 0.0)
+        off_edge = np.abs(np.sin(3.0 * theta)) > 0.01
+        assert tiny[off_edge] == pytest.approx(hard[off_edge], abs=1e-3)
+
     def test_phase_shifts_the_pattern(self) -> None:
         theta = np.array([0.1, 0.1 + math.pi / 3.0])
         shifted = Forcing(phase=math.pi / 3.0)
@@ -72,10 +89,13 @@ class TestForcing:
             {"period": 0.0},
             {"window": "bogus"},
             {"land_flux": math.nan},
+            {"edge_width": -0.1},
         ],
     )
     def test_invalid(self, kwargs: dict[str, object]) -> None:
-        with pytest.raises(ValueError, match=r"must|strips|window|land_flux"):
+        with pytest.raises(
+            ValueError, match=r"must|strips|window|land_flux|edge_width"
+        ):
             Forcing(**kwargs)  # type: ignore[arg-type]
 
 
@@ -630,6 +650,43 @@ class TestLambOseen:
         exact = vortex(2000.0)
         assert state.t == pytest.approx(1000.0)
         assert state.ubar[core] == pytest.approx(exact[core], rel=0.02)
+
+
+class TestTransientHeating:
+    def test_the_mean_wind_is_driven_only_while_the_heating_shape_changes(self) -> None:
+        # Uniform wall heating of a closed fluid: the temperature first adjusts
+        # (dT'/dt has a changing shape), then it just warms (dT/dt uniform, anomaly
+        # zero). The Coriolis-buoyancy force follows dT'/dt, so the mean wind is
+        # driven early and afterwards only decays at 1/tau_E. A wind still being
+        # forced in the frozen state would be a bug.
+        cfg = AnnulusConfig(
+            n_r=16,
+            n_theta=8,
+            nu=5.0e4,
+            advection=False,
+            floor_drag=0.0,
+            length=2.0e6,
+            endcap=True,
+            forcing=Forcing(land_flux=100.0, window="uniform"),
+        )
+        model = Annulus(cfg)
+        state = model.initial_state(amplitude=0.0)
+        early_force = []
+        for _ in range(30):
+            run_steps(model, state, 40.0, 1)
+            early_force.append(
+                np.max(np.abs(model.mean_wind_terms(state).coriolis_buoyancy))
+            )
+        assert max(early_force) > 0.0
+        assert np.all(state.ubar > 0.0)  # spinward: the heated fluid expands inward
+        run_steps(model, state, 40.0, 100)  # 4000 s: many diffusion times
+        frozen = state.ubar.copy()
+        assert np.max(
+            np.abs(model.mean_wind_terms(state).coriolis_buoyancy)
+        ) < 1e-3 * max(early_force)
+        tau = 1.0 / cfg.endcap_rate
+        run_steps(model, state, 40.0, round(0.5 * tau / 40.0))  # half a decay time
+        assert state.ubar == pytest.approx(frozen * math.exp(-0.5), rel=1e-2)
 
 
 class TestAdvanceAndDiagnostics:

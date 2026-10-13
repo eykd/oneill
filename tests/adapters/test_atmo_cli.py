@@ -148,6 +148,16 @@ class TestRunL3:
         assert merged["cases"]["primary"] == before
         assert merged["cases"]["cb_off"]["coriolis_buoyancy"] is False
 
+    def test_edge_smoothing_option_is_accepted(self, tmp_path: Path) -> None:
+        status, _, summary = self.tiny(
+            tmp_path, "--l3-case", "steady", "--l3-edge-cells", "2"
+        )
+        assert status == 0
+        assert (
+            json.loads(summary.read_text(encoding="utf-8"))["cases"]["steady"]["steps"]
+            > 0
+        )
+
     def test_the_doc_block_renders_from_the_json(self, tmp_path: Path) -> None:
         _, _, summary = self.tiny(tmp_path, "--l3-case", "steady")
         doc = tmp_path / "doc.md"

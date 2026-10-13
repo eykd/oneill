@@ -79,6 +79,9 @@ class Forcing:
             ``"zero"`` (windows do not exchange heat), or ``"uniform"`` (no
             strips: the land flux everywhere, an axisymmetric case).
         phase: Azimuth in rad of the start of the first land strip.
+        edge_width: Width ``w`` in rad of a ``tanh(delta_theta / w)`` smoothing of the
+            strip edges (``0``, the default, keeps the step function). A width of
+            about two grid spacings avoids exciting the grid scale in theta.
     """
 
     land_flux: float = 100.0
@@ -87,9 +90,13 @@ class Forcing:
     strips: int = 3
     window: str = "neutral"
     phase: float = 0.0
+    edge_width: float = 0.0
 
     def __post_init__(self) -> None:
-        """Validate the strip count, period and window mode."""
+        """Validate the strip count, period, window mode and edge width."""
+        if not (math.isfinite(self.edge_width) and self.edge_width >= 0.0):
+            msg = f"edge_width must be non-negative and finite, got {self.edge_width!r}"
+            raise ValueError(msg)
         finite("land_flux", self.land_flux)
         finite("night_flux", self.night_flux)
         if self.strips < 1:
@@ -114,14 +121,17 @@ class Forcing:
         level = self.land_level(t)
         if self.window == "uniform":
             return np.full_like(theta, level)
-        sector = np.floor((theta - self.phase) / (math.pi / self.strips)).astype(int)
-        land = sector % 2 == 0
-        n_land = int(np.count_nonzero(land))
-        n_window = len(theta) - n_land
+        if self.edge_width > 0.0:
+            wave = np.sin(self.strips * (theta - self.phase))
+            land = 0.5 * (1.0 + np.tanh(wave / (self.strips * self.edge_width)))
+        else:
+            sector = np.floor((theta - self.phase) / (math.pi / self.strips))
+            land = (sector.astype(int) % 2 == 0).astype(np.float64)
         window = 0.0
-        if self.window == "neutral" and n_window > 0:
-            window = -level * n_land / n_window  # exactly zero net flux on the grid
-        return np.where(land, level, window)
+        if self.window == "neutral" and np.sum(1.0 - land) > 0.0:
+            # exactly zero net flux on the grid
+            window = -level * float(np.sum(land) / np.sum(1.0 - land))
+        return np.asarray(land * level + (1.0 - land) * window)
 
 
 @dataclass(frozen=True, slots=True)

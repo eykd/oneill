@@ -74,6 +74,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--l3-n-r", type=int, default=PRODUCTION_N_R, help="radial cells")
     ap.add_argument(
+        "--l3-edge-cells",
+        type=float,
+        default=0.0,
+        help="smooth the strip edges over this many azimuthal grid spacings",
+    )
+    ap.add_argument(
         "--l3-stretch",
         type=float,
         default=PRODUCTION_STRETCH,
@@ -130,6 +136,7 @@ def _run_l3(args: argparse.Namespace, stdout: TextIO) -> None:
             n_r=args.l3_n_r,
             n_theta=args.l3_n_theta,
             stretch=args.l3_stretch,
+            edge_cells=args.l3_edge_cells,
             sample_every=args.l3_sample_every,
         )
         wall = time.perf_counter() - start
