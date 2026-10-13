@@ -208,12 +208,14 @@ Warm, lighter air is displaced toward the axis by denser air settling outward, s
 
 Second-half (days 5-10) means; 2D (r, theta) model; heat in and out through the floor strips vs volumetric sink differ because the outcome depends on where heat leaves the air. The day/night ratio is the median over whole days after day 1 of the daily maximum over minimum kinetic energy.
 
-Resolution check (same case, different azimuthal resolution; days 2-4 means):
+Resolution check (each case at two azimuthal resolutions; days 2-4 means):
 
-| Run | n_theta | rms wind 10 m (m/s) | spatial peak 10 m wind, mean\|u\|+3 sigma over theta (m/s) | m=3 fraction | m<=2 fraction | energy centroid length (km) |
-| --- | --- | --- | --- | --- | --- | --- |
-| 4-day check, 256 around the ring | 256 | 1.05 | 4.03 | 0.18 | 0.18 | 1.41 |
-| 4-day check, 512 around the ring | 512 | 1.03 | 3.95 | 0.24 | 0.17 | 1.48 |
+| Case | Run | n_theta | rms wind 10 m (m/s) | spatial peak 10 m wind, mean\|u\|+3 sigma over theta (m/s) | m=3 fraction | m<=2 fraction | energy centroid length (km) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| day/night, windows always cool (headline) | 4-day check, 256 around the ring | 256 | 0.94 | 3.57 | 0.19 | 0.28 | 1.74 |
+| day/night, windows always cool (headline) | 4-day check, 512 around the ring | 512 | 0.90 | 3.44 | 0.20 | 0.35 | 1.82 |
+| day/night, windows balance land instantly | 4-day check, 256 around the ring | 256 | 1.05 | 4.03 | 0.18 | 0.18 | 1.41 |
+| day/night, windows balance land instantly | 4-day check, 512 around the ring | 512 | 1.03 | 3.95 | 0.24 | 0.17 | 1.48 |
 
 *Two-dimensional (axis-invariant) Boussinesq convection with constant eddy viscosity, a free-slip inner wall at the stated radius (an artifact: the habitat has no inner wall) and a canopy-drag floor. It can support or undermine the 2-D hypothesis but cannot show where axis-invariance breaks down. Energy is conserved only to a few percent when eddies saturate.*
 <!-- /gen -->

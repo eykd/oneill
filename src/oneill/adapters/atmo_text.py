@@ -502,10 +502,17 @@ def render_annulus(l3: Mapping[str, Any] | None, caveat: str) -> str:
     parts = [table, FOOTNOTE]
     resolution = {} if l3 is None else dict(l3.get("resolution", {}))
     if resolution:
-        rrows = [_resolution_row(name, resolution[name]) for name in sorted(resolution)]
+        keys = sorted(
+            resolution,
+            key=lambda k: (
+                _case_rank(resolution[k].get("name", k)),
+                resolution[k].get("n_theta", 0),
+            ),
+        )
+        rrows = [_resolution_row(name, resolution[name]) for name in keys]
         parts += [
             (
-                "Resolution check (same case, different azimuthal resolution; "
+                "Resolution check (each case at two azimuthal resolutions; "
                 "days 2-4 means):"
             ),
             _table(RESOLUTION_HEADERS, rrows),
@@ -543,6 +550,7 @@ ANNULUS_HEADERS = [
     "day/night KE ratio",
 ]
 RESOLUTION_HEADERS = [
+    "Case",
     "Run",
     "n_theta",
     "rms wind 10 m (m/s)",
@@ -581,8 +589,13 @@ def _annulus_row(name: str, c: Mapping[str, Any]) -> list[str]:
     ]
 
 
+def _case_rank(name: str) -> int:
+    return CASE_ORDER.index(name) if name in CASE_ORDER else len(CASE_ORDER)
+
+
 def _resolution_row(name: str, c: Mapping[str, Any]) -> list[str]:
     return [
+        CASE_LABELS.get(c.get("name", ""), str(c.get("name", name))),
         str(c.get("label", name)),
         f"{c.get('n_theta', '-')}",
         f"{c['rms_wind_10m']:.2f}",

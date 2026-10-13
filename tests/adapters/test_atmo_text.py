@@ -149,16 +149,39 @@ class TestAnnulusBlock:
     def test_resolution_rows_render_as_their_own_table(self) -> None:
         fine = {**SUMMARY, "n_theta": 512, "label": "4-day check, 512 around the ring"}
         bare = {**SUMMARY, "n_theta": 128}
+        headline = {**SUMMARY, "name": "window_sink", "n_theta": 256}
+        nameless = {k: v for k, v in SUMMARY.items() if k != "name"}
         text = render_annulus(
             {
                 "cases": {"primary": SUMMARY},
-                "resolution": {"a_512": fine, "b_128": bare},
+                "resolution": {
+                    "a_512": fine,
+                    "b_128": bare,
+                    "w": headline,
+                    "z": {**nameless, "n_theta": 64},
+                },
             },
             "c",
         )
         assert "Resolution check" in text
-        assert "| 4-day check, 512 around the ring | 512 |" in text
-        assert "| b_128 | 128 |" in text  # no label: the key
+        assert "| Case | Run | n_theta |" in text
+        assert (
+            "| day/night, windows balance land instantly "
+            "| 4-day check, 512 around the ring | 512 |" in text
+        )
+        assert "| day/night, windows balance land instantly | b_128 | 128 |" in text
+        assert "| z | z | 64 |" in text  # no name, no label: the key
+        rows = text.split("Resolution check")[1]
+        # headline case first, then primary by resolution, unnamed last
+        order = [
+            rows.index("windows always cool"),
+            rows.index("| b_128 |"),
+            rows.index("| 4-day check, 512"),
+            rows.index("| z | z |"),
+        ]
+        assert order == sorted(order)
+        for removed in ("Nusselt", "arrest", "stationary", "drift", "wall"):
+            assert removed not in rows
 
     def test_render_blocks_includes_the_summary(self, report: AtmosphereReport) -> None:
         blocks = render_blocks(report, {"cases": {"primary": SUMMARY}})
