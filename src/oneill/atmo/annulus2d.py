@@ -4,18 +4,23 @@ Design and derivations: ``docs/design/annulus2d.md``. The flow is invariant alon
 the axis. With ``u_r = psi_theta / r``, ``u_theta = -psi_r`` and ``zeta = -lap psi``::
 
     d zeta/dt + u.grad zeta = nu lap zeta + beta Omega^2 dT/dtheta - zeta/tau_E
-                              + 2 Omega beta u.grad T          (Coriolis-buoyancy)
+                              - 2 Omega beta dT/dt           (Coriolis-buoyancy)
                               + curl(drag)
     d T/dt + u.grad T = kappa lap T                            (+ wall flux)
-    d ubar/dt = -(1/r^2) d(r^2 <u_r u_theta>)/dr + 2 Omega beta (<T u_r> - K0)
-                + visc - ubar/tau_E + drag
+    d ubar/dt = -(1/r^2) d(r^2 <u_r u_theta>)/dr + F_cb + visc - ubar/tau_E + drag
 
 ``T`` is the potential-temperature anomaly. Gravity is centrifugal, ``g = Omega^2 r``,
 pointing outward, so warm air feels a force toward the axis and the baroclinic
 torque is ``+ beta Omega^2 dT/dtheta``. Coriolis cancels in 2-D incompressible flow.
 The mean (m = 0) wind is advanced as ``ubar`` because ``psi_0`` has no boundary
-value; ``K0`` makes the Coriolis-buoyancy torque integrate to zero so angular
-momentum changes only through wall and end-cap torques.
+value. Coriolis acts on the *mass flux*, whose divergence is ``beta dT/dt`` (a
+closed fluid conserves mass), so the extended-Boussinesq Coriolis-buoyancy source is
+``-2 Omega beta dT/dt`` in the vorticity equation, built from the model's own
+temperature tendency (``F_cb`` is its mean part, anomalies about the area mean). It
+vanishes in a steady state; there is no steady retrograde mean wind from it. It
+moves angular momentum between relative motion and the moment of inertia, so
+:meth:`Annulus.absolute_angular_momentum` changes only through wall and end-cap
+torques.
 
 Numerics: rfft in theta (2/3 dealiasing, an optional polar filter and an optional
 exponential spectral filter), finite volume in r on a grid clustered toward the floor,
@@ -24,11 +29,11 @@ explicit, backward Euler for the first step), tridiagonal solves batched over Fo
 modes. Advection is in flux form: conservative in r (third-order upwind-biased face
 values, zero flux through both walls) and spectral in theta, so the theta-mean heat
 content changes only by the wall flux, exactly. The mean-wind Reynolds stress is also
-a flux, so angular momentum telescopes. Energy is *not* conserved exactly (about 4 %
-gain when an inviscid shear instability saturates). The floor is the L1 canopy-drag
-layer; the vorticity wall condition is free slip (no-slip, a three-point Taylor
-formula, for validation). The no-slip condition makes the onset thresholds converge
-at first order, so the validation tests extrapolate.
+a flux, so angular momentum telescopes. Energy is *not* conserved exactly. The
+floor is the L1 canopy-drag layer; the vorticity wall condition is free slip
+(no-slip, a three-point Taylor formula, for validation). Dirichlet walls use the
+second-order three-point wall derivative, so the onset thresholds converge at
+second order.
 """
 
 import math
@@ -689,8 +694,17 @@ class Annulus:
             adv_z_hat = self._divergence(zeta_full, zf_in, zf_out, u_face, u_th)
         r_col = self.r[:, None]
         n_zeta = -adv_z_hat + c.beta * c.omega**2 * i_m * state.temp
+        n_temp = np.where(self.mask, -adv_t_hat, 0.0)
+        if c.tau_relax is not None:
+            mean_t = float(
+                np.sum(self.area * state.temp[:, 0].real) / np.sum(self.area)
+            )
+            n_temp[:, 0] -= mean_t / c.tau_relax
+        cb = np.zeros(c.n_r)
         if c.coriolis_buoyancy:
-            n_zeta = n_zeta + 2.0 * c.omega * c.beta * adv_t_hat
+            d_t = self._diffusive_tendency(state, n_temp)
+            n_zeta = n_zeta - 2.0 * c.omega * c.beta * d_t
+            cb = self._mean_coriolis_force(d_t[:, 0].real)
         force = self._drag_force(u_th)
         if c.floor_drag > 0.0:
             force_hat = self.to_hat(force)
@@ -700,27 +714,63 @@ class Annulus:
             n_zeta = n_zeta + curl
         n_zeta[:, 0] = 0.0
         n_zeta = np.where(self.mask, n_zeta, 0.0)
-        n_temp = np.where(self.mask, -adv_t_hat, 0.0)
-        if c.tau_relax is not None:
-            mean_t = float(
-                np.sum(self.area * state.temp[:, 0].real) / np.sum(self.area)
-            )
-            n_temp[:, 0] -= mean_t / c.tau_relax
 
         flux_uv = np.mean(u_r * u_th, axis=1)
         phi = np.zeros(c.n_r + 1)
         phi[1:-1] = self.faces[1:-1] ** 2 * 0.5 * (flux_uv[1:] + flux_uv[:-1])
         reynolds = -np.diff(phi) / self.moment
-        cb = np.zeros(c.n_r)
-        if c.coriolis_buoyancy:
-            tu = np.mean(self.to_phys(state.temp) * u_r, axis=1)
-            f_theta = 2.0 * c.omega * c.beta * tu
-            k0 = float(np.sum(self.moment * f_theta) / np.sum(self.moment))
-            cb = f_theta - k0
         drag = np.mean(force, axis=1) if c.floor_drag > 0.0 else np.zeros(c.n_r)
-        terms = Terms(np.asarray(reynolds), np.asarray(cb), np.asarray(drag))
+        terms = Terms(np.asarray(reynolds), cb, np.asarray(drag))
         n_ubar = terms.reynolds + terms.coriolis_buoyancy + terms.drag
         return (n_zeta, n_temp, n_ubar), terms, (z_in, z_out)
+
+    def _diffusive_tendency(self, state: AnnulusState, n_temp: CArray) -> CArray:
+        """Full ``dT/dt``: the explicit terms plus diffusion and the wall flux."""
+        t_in, t_out = self._t_fixed_values()
+        lap = self.apply_laplacian(state.temp, self._t_bands(), t_in, t_out)
+        total = self.config.kappa * lap + self._flux_bc(state.t) + n_temp
+        return np.asarray(np.where(self.mask, total, 0.0))
+
+    def temperature_tendency(self, state: AnnulusState) -> CArray:
+        """The model's own ``dT/dt`` (spectral) at ``state``."""
+        (_, n_t, _), _, _ = self.explicit_terms(state)
+        return self._diffusive_tendency(state, n_t)
+
+    def _mean_coriolis_force(self, d_t0: Array) -> Array:
+        """Mean azimuthal Coriolis-buoyancy force from the mean temperature tendency.
+
+        ``(1/r) d(r F)/dr = -2 Omega beta dT'/dt`` with ``T'`` the anomaly about the
+        area mean (the closed fluid's mass is fixed), integrated from the inner wall.
+        """
+        c = self.config
+        g = d_t0 - float(np.sum(self.area * d_t0) / np.sum(self.area))
+        cum = np.concatenate([[0.0], np.cumsum(self.area * g)])
+        return np.asarray(-c.omega * c.beta * (cum[:-1] + cum[1:]) / self.r)
+
+    @property
+    def inertia_weights(self) -> Array:
+        """Weights ``P`` with ``sum(P dT) = -dI'/dt`` for the moment of inertia."""
+        c_i = self.moment / self.r
+        tail = np.concatenate([np.cumsum(c_i[::-1])[::-1][1:], [0.0]])
+        return np.asarray(self.area * (c_i + 2.0 * tail))
+
+    def absolute_angular_momentum(self, state: AnnulusState) -> float:
+        """Relative angular momentum plus the moment-of-inertia correction.
+
+        ``2 pi [sum(M ubar) + Omega beta sum(P (T0 - <T0>))]``: with the consistent
+        Coriolis-buoyancy force this changes only through wall and end-cap torques.
+        """
+        c = self.config
+        t0 = state.temp[:, 0].real
+        t_prime = t0 - float(np.sum(self.area * t0) / np.sum(self.area))
+        return float(
+            2.0
+            * np.pi
+            * (
+                np.sum(self.moment * state.ubar)
+                + c.omega * c.beta * np.sum(self.inertia_weights * t_prime)
+            )
+        )
 
     # --- implicit pieces ------------------------------------------------------
     def _factors(self, dt: float, omega: float | None) -> _Factors:
@@ -774,25 +824,27 @@ class Annulus:
         bc[-1] += self.config.nu * self.w_out * z_out
         return bc
 
-    def _bc_temp(self, t: float) -> CArray:
+    def _flux_bc(self, t: float) -> CArray:
+        """Heat-flux (Neumann) wall terms of ``dT/dt``; none on a fixed-T wall."""
         c = self.config
         bc = np.zeros((c.n_r, self.k), dtype=np.complex128)
-        kap = c.kappa
-        zero_t = np.zeros(self.k, dtype=np.complex128)
-        if c.outer_t == "fixed":
-            t_out = zero_t.copy()
-            t_out[0] = c.t_outer
-            bc[-1] += kap * self.w_out * t_out
-        else:
+        if c.outer_t == "flux":
             bc[-1] += c.radius * self._flux_hat(t) / self.area[-1]
-        if c.inner_t == "fixed":
-            t_in = zero_t.copy()
-            t_in[0] = c.t_inner
-            bc[0] += kap * self.w_in * t_in
-        else:
-            q_in = zero_t.copy()
+        if c.inner_t == "flux":
+            q_in = np.zeros(self.k, dtype=np.complex128)
             q_in[0] = c.flux_inner / c.rho_cp
             bc[0] -= self.r_in * q_in / self.area[0]
+        return bc
+
+    def _bc_temp(self, t: float) -> CArray:
+        """Right-hand side of the implicit temperature solve from the walls."""
+        c = self.config
+        t_in, t_out = self._t_fixed_values()
+        bc = self._flux_bc(t)
+        if c.outer_t == "fixed":
+            bc[-1] += c.kappa * self.w_out * t_out
+        if c.inner_t == "fixed":
+            bc[0] += c.kappa * self.w_in * t_in
         return bc
 
     # --- stepping -------------------------------------------------------------

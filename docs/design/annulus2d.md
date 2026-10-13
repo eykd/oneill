@@ -16,13 +16,13 @@ Check: T' larger at larger theta means inward flow there and outward flow at sma
 
 **Coriolis drops out.** In 2D incompressible flow, curl(Omega x u) = Omega(div u) - (Omega.grad)u = 0. Coriolis is a pure gradient absorbed by p'. This is the Taylor-Proudman statement of Q8.
 
-**Coriolis-buoyancy (default ON).** Keeping (rho'/rho0) on 2 Omega x u adds the force beta T' 2 Omega (z x u) = 2 Omega beta T' (-u_theta, u_r). Its curl is + 2 Omega beta u.grad T' (curl(phi A) with A = z x u, div u = 0), a few percent of the baroclinic term for the vorticity of m >= 1 modes. But its azimuthal-mean part is the **leading forcing of the zonal-mean wind**: <F_theta> = 2 Omega beta <T' u_r>, about -6e-5 m/s^2 near the rim (rising warm air, u_r < 0, is pushed antispinward). Against 1/tau_E (2.4e-5 /s) that is a 2-3 m/s retrograde mean wind, the known zonal-flow source in supergravitational convection (Jiang et al.).
+**Coriolis-buoyancy (default ON), corrected.** An earlier draft added `+2 Omega beta u.grad T` (the density factor on `2 Omega x u`) and a K0 shift, and predicted a steady retrograde mean wind of 2-3 m/s. That was an artifact. Coriolis acts on the *mass flux* `v = rho u / rho0`, and a closed fluid conserves mass: `div v = -(d rho/dt)/rho0 = beta dT'/dt`, where `T'` is the anomaly about the area mean (total mass is fixed). Then `curl(-2 Omega z x v) = -2 Omega div v`, so the vorticity source is
 
-Extended Boussinesq gets the *integral* of this force wrong. The Coriolis torque on a closed fluid is -2 Omega rho0 int r u_r dA = 0 by incompressibility, but the extended term adds -2 Omega int rho' r u_r dA, which a closed fluid cannot sustain with fixed mass. **Mass-consistent form:** subtract the moment-weighted mean,
+    -2 Omega beta dT'/dt
 
-    F_theta = 2 Omega beta (T' u_r - K0),   K0 = int r^2 <T' u_r>_theta dr / int r^2 dr
+built from the model's own temperature tendency (advection, diffusion, wall flux, relaxation), for the m >= 1 modes. For the theta-mean, `(1/r) d(r F)/dr = -2 Omega beta d<T'>/dt`, integrated from the inner wall (zero at the outer wall by the area-mean subtraction): `F(r) = -(2 Omega beta / r) int r' d<T'>/dt dr'`. Equivalently the mean Coriolis torque is `-2 Omega <rho u_r>/rho0`, and mass conservation gives `<rho u_r> = (beta rho0 / r) int r' d<T>/dt dr'`.
 
-so int r F_theta dA = 0 and total angular momentum changes only through wall and end-cap torques. K0 is uniform, so it enters only the m = 0 equation. The flag switches the whole term (m >= 1 curl and m = 0 force) on or off; production reports both.
+Consequences: the term **vanishes in a steady state at every radius** (there is no steady zonal wind from it), and it only moves angular momentum between relative motion and the moment of inertia `I' = -2 pi beta rho0 int T' r^3 dr`: `dL_rel/dt = -Omega dI'/dt`. The conserved quantity is `L_rel + Omega I'` (the code's `absolute_angular_momentum`), which changes only through wall and end-cap torques. The flag switches the whole term on or off; production reports both and the difference should be transient.
 
 **System**
 
@@ -75,7 +75,7 @@ Each fails if its ingredient is wrong.
 4. **Linear drag:** end-cap term only: amplitude decays as exp(-t/tau_E); doubling L halves the rate.
 5. **Energy:** inviscid, drag-free, no T', polar filter off: total energy conserved to discretisation order. **(a) Inviscid shear instability** exchanges energy between m = 0 and m >= 1 while the total stays constant (catches a sign error in the m = 0 Reynolds stress).
 6. **(b) Axisymmetric spin-down in L3 matches L1.**
-7. **(c) Angular-momentum budget:** the Reynolds and conservative Coriolis-buoyancy forcing integrate to zero; the total changes only by wall and end-cap torques.
+7. **(c) Angular-momentum budget:** the Reynolds torque integrates to zero; the Coriolis-buoyancy torque equals `-Omega dI'/dt`; `L_rel + Omega I'` changes only by wall and end-cap torques; and a steady state feels no Coriolis-buoyancy force at any radius.
 8. **(d) Omega scaling:** changing Omega with beta Omega^2 and tau_E held fixed leaves results unchanged when Coriolis-buoyancy is off.
 9. **(e) Torque sign:** the centre of a warm patch moves inward (mean u_r < 0 over the patch).
 10. **(f) Heat budget:** d(int T')/dt = boundary flux - relaxation, exactly.

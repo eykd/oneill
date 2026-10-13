@@ -223,7 +223,10 @@ class TestHeatBudget:
         errors = []
         for n_r in (24, 48):
             cfg = small(
-                n_r=n_r, forcing=Forcing(land_flux=200.0, window="uniform"), nu=1.0
+                n_r=n_r,
+                forcing=Forcing(land_flux=200.0, window="uniform"),
+                nu=1.0,
+                coriolis_buoyancy=False,
             )
             model = Annulus(cfg)
             state = model.initial_state(amplitude=0.0)
@@ -411,39 +414,82 @@ class TestInviscidDynamics:
 
 
 class TestAngularMomentum:
-    def test_reynolds_and_coriolis_buoyancy_torques_integrate_to_zero(self) -> None:
+    def test_reynolds_torque_vanishes_and_cb_torque_is_the_inertia_change(self) -> None:
         cfg = small(n_theta=48, forcing=Forcing(land_flux=200.0))
         model = Annulus(cfg)
         state = model.initial_state(amplitude=0.05, seed=3)
         for _ in range(30):
             model.step(state, 5.0)
             terms = model.mean_wind_terms(state)
-            scale = np.sum(model.moment * np.abs(terms.coriolis_buoyancy)) + 1e-30
             assert np.sum(model.moment * terms.reynolds) == pytest.approx(
                 0.0, abs=1e-9 * (1.0 + np.sum(model.moment * np.abs(terms.reynolds)))
             )
+            d_t0 = model.temperature_tendency(state)[:, 0].real
+            g = d_t0 - np.sum(model.area * d_t0) / np.sum(model.area)
+            expected = -cfg.omega * cfg.beta * np.sum(model.inertia_weights * g)
             assert np.sum(model.moment * terms.coriolis_buoyancy) == pytest.approx(
-                0.0, abs=1e-9 * scale
+                expected, rel=1e-9, abs=1e-18
             )
 
-    def test_the_mean_wind_is_driven_retrograde_by_rising_warm_air(self) -> None:
-        cfg = small(n_theta=48, forcing=Forcing(land_flux=200.0))
-        on = Annulus(cfg)
+    def test_vorticity_source_is_minus_two_omega_beta_dt_dt(self) -> None:
+        on = Annulus(small(n_theta=48, forcing=Forcing(land_flux=200.0)))
         off = Annulus(
             small(n_theta=48, forcing=Forcing(land_flux=200.0), coriolis_buoyancy=False)
         )
-        s_on, s_off = (
-            on.initial_state(amplitude=0.05),
-            off.initial_state(amplitude=0.05),
-        )
-        for _ in range(120):
-            on.step(s_on, 5.0)
-            off.step(s_off, 5.0)
-        # rising warm air (u_r < 0) with T' > 0 feels F_theta = 2 Omega beta T' u_r < 0
-        assert np.min(s_on.ubar) < -1e-6
-        assert np.abs(s_off.ubar).max() < np.abs(s_on.ubar).max()
+        state = on.initial_state(amplitude=0.05, seed=4)
+        for _ in range(20):
+            on.step(state, 5.0)
+        (n_on, _, _), _, _ = on.explicit_terms(state)
+        (n_off, _, _), _, _ = off.explicit_terms(state)
+        d_t = on.temperature_tendency(state)
+        expected = -2.0 * on.config.omega * on.config.beta * d_t
+        expected[:, 0] = 0.0
+        assert n_on - n_off == pytest.approx(expected, rel=1e-9, abs=1e-18)
+        assert np.max(np.abs(expected)) > 0.0
 
-    def test_angular_momentum_changes_only_by_wall_and_cap_torques(self) -> None:
+    def test_a_steady_state_feels_no_coriolis_buoyancy(self) -> None:
+        cfg = small(
+            nu=500.0,
+            advection=False,
+            outer_t="fixed",
+            inner_t="fixed",
+            t_outer=1.0,
+            t_inner=0.0,
+            forcing=Forcing(land_flux=0.0),
+        )
+        model = Annulus(cfg)
+        state = model.initial_state(amplitude=0.0)
+        state.temp[:, 0] = np.linspace(2.0, -1.0, cfg.n_r)  # far from steady
+        early = np.max(np.abs(model.mean_wind_terms(state).coriolis_buoyancy))
+        run_steps(model, state, 300.0, 600)
+        late = np.max(np.abs(model.mean_wind_terms(state).coriolis_buoyancy))
+        assert early > 1e-9
+        assert late < 1e-3 * early
+        assert np.max(np.abs(model.temperature_tendency(state)[:, 0])) < 1e-4
+
+    def test_the_mean_wind_with_coriolis_buoyancy_differs_only_while_heat_moves(
+        self,
+    ) -> None:
+        cfg = small(
+            n_theta=8,
+            advection=False,
+            floor_drag=0.0,
+            endcap=False,
+            forcing=Forcing(land_flux=100.0, window="uniform"),
+        )
+        model = Annulus(cfg)
+        state = model.initial_state(amplitude=0.0)
+        run_steps(model, state, 10.0, 60)
+        # uniform heating of a closed fluid expands it: the mean wind responds ...
+        assert np.max(np.abs(state.ubar)) > 0.0
+        # ... but the absolute angular momentum is untouched (no wall or cap torque)
+        relative = abs(model.angular_momentum(state))
+        assert relative > 0.0
+        assert abs(model.absolute_angular_momentum(state)) < 1e-4 * relative  # O(dt)
+
+    def test_absolute_angular_momentum_changes_only_by_wall_and_cap_torques(
+        self,
+    ) -> None:
         cfg = small(n_theta=48, forcing=Forcing(land_flux=200.0), length=4000.0)
         model = Annulus(cfg)
         state = model.initial_state(amplitude=0.05, seed=5)
@@ -452,18 +498,20 @@ class TestAngularMomentum:
             model.step(state, dt)
         ledger = []
         for _ in range(60):
-            l_before = model.angular_momentum(state)
+            l_before = model.absolute_angular_momentum(state)
+            rel_before = model.angular_momentum(state)
             terms_before = model.mean_wind_terms(state)
             model.step(state, dt)
-            l_after = model.angular_momentum(state)
+            l_after = model.absolute_angular_momentum(state)
+            rel_after = model.angular_momentum(state)
             terms_after = model.mean_wind_terms(state)
             drag = (
                 2.0
                 * math.pi
                 * np.sum(model.moment * 0.5 * (terms_before.drag + terms_after.drag))
             )
-            cap = -cfg.endcap_rate * 0.5 * (l_before + l_after)
-            ledger.append((l_after - l_before, dt * (drag + cap), abs(l_after)))
+            cap = -cfg.endcap_rate * 0.5 * (rel_before + rel_after)
+            ledger.append((l_after - l_before, dt * (drag + cap), abs(rel_after)))
         change = np.array([x[0] for x in ledger])
         torque = np.array([x[1] for x in ledger])
         scale = max(x[2] for x in ledger)
