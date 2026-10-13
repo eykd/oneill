@@ -63,9 +63,10 @@ class ConstantSpeed:
 class Trapezoid:
     """Accelerate, cruise, decelerate over ``distance``.
 
-    Phases are half-open: acceleration on ``[0, t_acc)``, cruise on
-    ``[t_acc, t_acc + t_cruise)``, braking on ``[t_acc + t_cruise, duration)``.
-    Outside the ride the body is at rest: at 0 before it, at ``distance`` after.
+    Phases are half-open except that the ride includes both of its ends:
+    acceleration on ``[0, t_acc)``, cruise on ``[t_acc, t_acc + t_cruise)``,
+    braking on ``[t_acc + t_cruise, duration]``. Outside the ride the body is at
+    rest: at 0 before it, at ``distance`` after.
     When ``v_max`` is never reached the profile is a triangle (no cruise).
     """
 
@@ -108,8 +109,8 @@ class Trapezoid:
         return (
             (t >= 0.0) & (t < t1),
             (t >= t1) & (t < t2),
-            (t >= t2) & (t < self.duration),
-            t >= self.duration,
+            (t >= t2) & (t <= self.duration),
+            t > self.duration,
         )
 
     def s(self, t: ArrayLike) -> Floats:

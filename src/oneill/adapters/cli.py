@@ -2,8 +2,15 @@
 
 import argparse
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
+from oneill.adapters.plots import (
+    PlottingUnavailableError,
+    check_available,
+    draw_figures,
+    show_all,
+)
 from oneill.adapters.text import (
     render_ballistics,
     render_custom,
@@ -16,6 +23,7 @@ from oneill.adapters.text import (
 )
 from oneill.core.cylinder import G_STANDARD, Cylinder
 from oneill.core.vectors import LocalVector
+from oneill.motion.figures import build_figures
 from oneill.motion.scenarios import (
     ballistics_report,
     custom_report,
@@ -28,6 +36,8 @@ from oneill.motion.verification import all_passed, run_selftest
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from oneill.motion.figures import FigureSpec
 
 SECTIONS = ("lateral", "vertical", "stairs", "elevator", "ballistics")
 _DEFAULT_HEIGHT_FRACTIONS = (0.0, 5 / 32, 0.5, 0.875)
@@ -108,6 +118,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["all", *SECTIONS],
     )
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--plot", action="store_true", help="show matplotlib figures")
+    ap.add_argument("--save-plots", metavar="DIR", help="save figures as PNG into DIR")
     return ap
 
 
@@ -117,6 +129,18 @@ def _habitat(args: argparse.Namespace) -> Cylinder:
     return Cylinder.from_gravity(
         args.radius, args.length, args.gravity, args.spin_accel
     )
+
+
+def _heights(args: argparse.Namespace, cyl: Cylinder) -> list[float]:
+    if args.heights is not None:
+        return list(args.heights)
+    return [f * cyl.radius for f in _DEFAULT_HEIGHT_FRACTIONS]
+
+
+def _elevator_top(args: argparse.Namespace, cyl: Cylinder) -> float:
+    if args.elevator_top is not None:
+        return float(args.elevator_top)
+    return _DEFAULT_ELEVATOR_TOP_FRACTION * cyl.radius
 
 
 def _report_text(args: argparse.Namespace, cyl: Cylinder) -> tuple[list[str], bool]:
@@ -130,12 +154,8 @@ def _report_text(args: argparse.Namespace, cyl: Cylinder) -> tuple[list[str], bo
         results = run_selftest(cyl)
         chunks.append(render_selftest(results))
         return chunks, all_passed(results)
-    heights = args.heights
-    if heights is None:
-        heights = [f * cyl.radius for f in _DEFAULT_HEIGHT_FRACTIONS]
-    top = args.elevator_top
-    if top is None:
-        top = _DEFAULT_ELEVATOR_TOP_FRACTION * cyl.radius
+    heights = _heights(args, cyl)
+    top = _elevator_top(args, cyl)
 
     want = set(args.sections)
     everything = "all" in want
@@ -175,11 +195,30 @@ def main(argv: Sequence[str] | None = None, stdout: TextIO | None = None) -> int
     out = sys.stdout if stdout is None else stdout
     parser = build_parser()
     args = parser.parse_args(argv)
+    plotting = (args.plot or bool(args.save_plots)) and not args.selftest
     try:
-        chunks, ok = _report_text(args, _habitat(args))
-    except ValueError as exc:
+        if plotting:
+            check_available()
+        cyl = _habitat(args)
+        chunks, ok = _report_text(args, cyl)
+        figures: tuple[FigureSpec, ...] = ()
+        if plotting:
+            figures = build_figures(
+                cyl,
+                args.speeds,
+                args.climb_rates,
+                _elevator_top(args, cyl),
+                args.elevator_vmax,
+                args.elevator_amax,
+            )
+    except (ValueError, PlottingUnavailableError) as exc:
         parser.error(str(exc))
     out.write("".join(chunks))
+    if plotting:
+        save_dir = Path(args.save_plots) if args.save_plots else None
+        draw_figures(figures, save_dir=save_dir, show=show_all if args.plot else None)
+        if save_dir is not None:
+            out.write(f"\nplots saved to {args.save_plots}/\n")
     return 0 if ok else 1
 
 

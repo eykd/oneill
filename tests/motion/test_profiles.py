@@ -68,7 +68,7 @@ class TestTrapezoid:
         prof = Trapezoid(3000.0, 10.0, 1.0)
         t = np.array([-1.0, 0.0, 5.0, 10.0, 150.0, 300.0, 305.0, 310.0, 320.0])
         np.testing.assert_allclose(prof.ds(t), [0, 0, 5, 10, 10, 10, 5, 0, 0])
-        np.testing.assert_allclose(prof.dds(t), [0, 1, 1, 0, 0, -1, -1, 0, 0])
+        np.testing.assert_allclose(prof.dds(t), [0, 1, 1, 0, 0, -1, -1, -1, 0])
 
     @pytest.mark.parametrize(("distance", "v_max", "a_max"), RIDES)
     def test_profile_respects_its_limits(

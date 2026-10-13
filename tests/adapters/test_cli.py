@@ -1,13 +1,18 @@
 """Tests for the command-line adapter."""
 
 import runpy
+import sys
 from io import StringIO
+from typing import TYPE_CHECKING
 
 import pytest
 
 from oneill.adapters import cli
 from oneill.adapters.cli import main, run
 from oneill.motion.verification import CheckResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def run_cli(*argv: str) -> tuple[int, str]:
@@ -129,6 +134,70 @@ class TestSelfTest:
         status, out = run_cli("--selftest")
         assert status == 1
         assert "SOME CHECKS FAILED" in out
+
+
+class TestPlots:
+    def test_save_plots_writes_the_four_figures_and_says_so(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "figs"
+        status, out = run_cli("--sections", "lateral", "--save-plots", str(target))
+        assert status == 0
+        assert sorted(p.name for p in target.glob("*.png")) == [
+            "1_floor_weight_vs_heading.png",
+            "2_climbing_vs_height.png",
+            "3_elevator.png",
+            "4_ballistics.png",
+        ]
+        assert out.endswith(f"\nplots saved to {target}/\n")
+
+    def test_plot_shows_the_figures_without_saving(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        shown: list[int] = []
+        monkeypatch.setattr(cli, "show_all", lambda: shown.append(1))
+        status, out = run_cli("--sections", "lateral", "--plot")
+        assert status == 0
+        assert shown == [1]
+        assert "plots saved" not in out
+        assert list(tmp_path.iterdir()) == []
+
+    def test_selftest_skips_plotting(self, tmp_path: Path) -> None:
+        status, out = run_cli("--selftest", "--save-plots", str(tmp_path / "x"))
+        assert status == 0
+        assert not (tmp_path / "x").exists()
+        assert "plots saved" not in out
+
+    def test_missing_matplotlib_is_a_usage_error_with_empty_stdout(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setitem(sys.modules, "matplotlib", None)
+        out = StringIO()
+        with pytest.raises(SystemExit) as exc:
+            main(["--plot"], out)
+        assert exc.value.code == 2
+        assert out.getvalue() == ""
+        assert "oneill[plot]" in capsys.readouterr().err
+
+    def test_figure_inputs_are_validated_before_anything_is_written(
+        self, tmp_path: Path
+    ) -> None:
+        out = StringIO()
+        with pytest.raises(SystemExit):
+            main(
+                [
+                    "--sections",
+                    "lateral",
+                    "--elevator-top",
+                    "99999",
+                    "--save-plots",
+                    str(tmp_path / "x"),
+                ],
+                out,
+            )
+        assert out.getvalue() == ""
+        assert not (tmp_path / "x").exists()
 
 
 class TestErrors:
