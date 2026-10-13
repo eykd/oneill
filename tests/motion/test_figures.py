@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 from oneill.core.cylinder import G_STANDARD, Cylinder
-from oneill.motion.figures import FigureSpec, Panel, Series, build_figures
+from oneill.core.figspec import FigureSpec, Panel, Series
+from oneill.motion.figures import build_figures
 
 SPEEDS = (1.4, 6.0)
 RATES = (0.3, 3.0)

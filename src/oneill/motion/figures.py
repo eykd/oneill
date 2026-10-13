@@ -3,11 +3,11 @@
 Nothing here draws. ``adapters.plots`` turns a ``FigureSpec`` into pixels.
 """
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from oneill.core.figspec import FigureSpec, Panel, Series
 from oneill.motion.ballistics import ballistic
 from oneill.motion.forces import analyze_path
 from oneill.motion.paths import FloorWalk, StraightPath
@@ -18,49 +18,12 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from oneill.core.cylinder import Cylinder
-    from oneill.core.vectors import Vec3
 
 _HEADING_STEP = 5.0
 _CLIMB_SAMPLES = 250
 _CLIMB_MAX_FRACTION = 0.99
 _ELEVATOR_SAMPLES = 600
 _HIGH_DROP = 100.0
-
-
-@dataclass(frozen=True, eq=False)
-class Series:
-    """One curve; ``fmt`` is a matplotlib format string ("" for the default)."""
-
-    label: str
-    x: Vec3
-    y: Vec3
-    fmt: str = ""
-
-
-@dataclass(frozen=True, eq=False)
-class Panel:
-    """One set of axes."""
-
-    xlabel: str
-    ylabel: str
-    series: tuple[Series, ...]
-    title: str = ""
-    hlines: tuple[float, ...] = ()
-    xticks: tuple[float, ...] = ()
-    xticklabels: tuple[str, ...] = ()
-    legend_size: float | None = None
-
-
-@dataclass(frozen=True, eq=False)
-class FigureSpec:
-    """A figure: a grid of panels, a file name and a size in inches."""
-
-    filename: str
-    panels: tuple[Panel, ...]
-    layout: tuple[int, int]
-    figsize: tuple[float, float]
-    suptitle: str = ""
-    sharex: bool = False
 
 
 def _floor_weight(cyl: Cylinder, speeds: Sequence[float]) -> FigureSpec:

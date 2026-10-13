@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from types import ModuleType
 
-    from oneill.motion.figures import FigureSpec
+    from oneill.core.figspec import FigureSpec
 
 _DPI = 120
 _INSTALL_HINT = "plotting needs matplotlib: pip install 'oneill[plot]'"
@@ -56,6 +56,8 @@ def _draw(plt: ModuleType, spec: FigureSpec) -> Any:  # noqa: ANN401
             ax.plot(s.x, s.y, s.fmt, label=s.label)
         for level in panel.hlines:
             ax.axhline(level, color="k", lw=0.5)
+        for band in panel.bands:
+            ax.axhspan(band.lo, band.hi, alpha=0.2, color="tab:red", label=band.label)
         if panel.xticks:
             ax.set_xticks(panel.xticks)
             ax.set_xticklabels(panel.xticklabels)
@@ -63,7 +65,7 @@ def _draw(plt: ModuleType, spec: FigureSpec) -> Any:  # noqa: ANN401
         ax.set_ylabel(panel.ylabel)
         if panel.title:
             ax.set_title(panel.title)
-        if panel.series:
+        if panel.series or panel.bands:
             ax.legend(fontsize=panel.legend_size)
         ax.grid(alpha=0.3)
     if spec.suptitle:

@@ -13,7 +13,8 @@ from oneill.adapters.plots import (
     draw_figures,
     show_all,
 )
-from oneill.motion.figures import FigureSpec, Panel, Series, build_figures
+from oneill.core.figspec import FigureSpec, Panel, Series
+from oneill.motion.figures import build_figures
 
 if TYPE_CHECKING:
     from pathlib import Path

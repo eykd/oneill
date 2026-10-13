@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
 
+from oneill.adapters import atmo_cli
 from oneill.adapters.plots import (
     PlottingUnavailableError,
     check_available,
@@ -37,7 +38,7 @@ from oneill.motion.verification import all_passed, run_selftest
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from oneill.motion.figures import FigureSpec
+    from oneill.core.figspec import FigureSpec
 
 SECTIONS = ("lateral", "vertical", "stairs", "elevator", "ballistics")
 _DEFAULT_HEIGHT_FRACTIONS = (0.0, 5 / 32, 0.5, 0.875)
@@ -190,11 +191,16 @@ def main(argv: Sequence[str] | None = None, stdout: TextIO | None = None) -> int
     """Run the CLI and return the process exit status.
 
     Invalid inputs exit with status 2 via ``parser.error``; nothing is written to
-    ``stdout`` in that case. A failing ``--selftest`` returns 1.
+    ``stdout`` in that case. A failing ``--selftest`` returns 1. The first
+    argument ``atmosphere`` selects the atmosphere subcommand
+    (:mod:`oneill.adapters.atmo_cli`); everything else is the original CLI.
     """
     out = sys.stdout if stdout is None else stdout
+    arguments = sys.argv[1:] if argv is None else list(argv)
+    if arguments[:1] == ["atmosphere"]:
+        return atmo_cli.main(arguments[1:], out)
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     plotting = (args.plot or bool(args.save_plots)) and not args.selftest
     try:
         if plotting:
