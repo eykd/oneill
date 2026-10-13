@@ -186,6 +186,18 @@ def friction_velocity(speed: float, height: float, terrain: Terrain) -> float:
     return speed / float(wind_speed(positive("height", height), 1.0, terrain))
 
 
+def drag_coefficient(height: float, z0: float) -> float:
+    """Surface drag coefficient ``C_D = (kappa / ln(z / z0))^2`` at height ``z``.
+
+    With the stress ``tau = C_D U(z)^2`` this is the log-law friction velocity
+    squared over the squared wind at ``z`` (``u*^2 / U^2``).
+    """
+    if not positive("height", height) > positive("z0", z0):
+        msg = "height must exceed z0"
+        raise ValueError(msg)
+    return (KAPPA / math.log(height / z0)) ** 2
+
+
 def gust_speed(
     mean_speed: float,
     ustar: float,

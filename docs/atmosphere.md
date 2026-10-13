@@ -86,55 +86,43 @@ Warm parcel released at the floor in dry-adiabatic air (O'Neill air, 290 K). Sho
 <!-- /gen -->
 
 <!-- gen:spinup -->
-Hull spun from rest to full rate; the air starts at rest.
+Floor condition for every row: canopy drag, C_D = 0.0178 (suburb, z0 = 0.5 m). Hull spun from rest to full rate; the air starts at rest.
 
-| Hull ramp | nu_t (m2/s) | End caps | Floor | time to 90 % co-rotation | peak wind at 2 m (m/s) | peak wind anywhere (m/s) |
-| --- | --- | --- | --- | --- | --- | --- |
-| 60 min | 1 | on | no-slip | 22.7 h | 6.18 | 159.8 |
-| 60 min | 1 | on | canopy drag, C_D = 2e-3 | 23.2 h | 39.28 | 160.6 |
-| 60 min | 1 | off | no-slip | 14 d | 6.31 | 165.6 |
-| 60 min | 1 | off | canopy drag, C_D = 2e-3 | 15 d | 52.71 | 166.4 |
-| 60 min | 10 | on | no-slip | 6.6 h | 1.79 | 131.1 |
-| 60 min | 10 | on | canopy drag, C_D = 2e-3 | 7.6 h | 57.78 | 135.3 |
-| 60 min | 10 | off | no-slip | 33.7 h | 1.91 | 146.3 |
-| 60 min | 10 | off | canopy drag, C_D = 2e-3 | 43.2 h | 61.02 | 150.9 |
-| 24.0 h | 1 | on | no-slip | 37.7 h | 0.78 | 66.4 |
-| 24.0 h | 1 | on | canopy drag, C_D = 2e-3 | 38.2 h | 15.61 | 67.4 |
-| 24.0 h | 1 | off | no-slip | 14 d | 1.19 | 133.5 |
-| 24.0 h | 1 | off | canopy drag, C_D = 2e-3 | 15 d | 36.38 | 135.3 |
-| 24.0 h | 10 | on | no-slip | 24.2 h | 0.15 | 23.8 |
-| 24.0 h | 10 | on | canopy drag, C_D = 2e-3 | 25.2 h | 15.56 | 26.6 |
-| 24.0 h | 10 | off | no-slip | 46.7 h | 0.27 | 71.4 |
-| 24.0 h | 10 | off | canopy drag, C_D = 2e-3 | 3 d | 25.51 | 80.7 |
+| Hull ramp | nu_t (m2/s) | End caps | time to 90 % co-rotation | peak wind at 10 m (m/s) | peak wind anywhere (m/s) | peak Ro | linear cap sink valid |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 60 min | 1 | on | 23.0 h | 18.3 | 159.3 | 0.57 | no (order of magnitude) |
+| 60 min | 1 | off | 14 d | 18.6 | 165.2 | 0.59 | no (order of magnitude) |
+| 60 min | 10 | on | 6.8 h | 23.1 | 131.5 | 0.46 | no (order of magnitude) |
+| 60 min | 10 | off | 38.0 h | 24.1 | 147.2 | 0.52 | no (order of magnitude) |
+| 24.0 h | 1 | on | 37.7 h | 5.3 | 66.3 | 0.25 | yes |
+| 24.0 h | 1 | off | 15 d | 6.8 | 133.6 | 0.51 | no (order of magnitude) |
+| 24.0 h | 10 | on | 24.3 h | 6.2 | 24.5 | 0.11 | yes |
+| 24.0 h | 10 | off | 2 d | 8.9 | 74.5 | 0.46 | no (order of magnitude) |
 
-Sudden change of the hull spin rate, with a Rayleigh-switched viscosity (larger where angular momentum falls outward).
+Sudden change of the hull spin rate, with a Rayleigh-switched viscosity (larger where angular momentum falls outward). With end caps the sink rate scales with the new hull rate, so spin-down is the slower of the pair.
 
 | Hull spin change | nu_t stable / unstable | End caps | time to 90 % adjustment |
 | --- | --- | --- | --- |
-| -10% | 1 / 10 | on | 18.7 h |
-| +10% | 1 / 10 | on | 21.2 h |
-| -10% | 1 / 10 | off | 9 d |
-| +10% | 1 / 10 | off | 14 d |
+| -10% | 1 / 10 | on | 23.8 h |
+| +10% | 1 / 10 | on | 22.0 h |
+| -10% | 1 / 10 | off | 15 d |
+| +10% | 1 / 10 | off | 15 d |
 
 Steady lag wind while the hull changes speed by 1 % per day (spin-up: the air lags, so the wind is negative).
 
-| nu_t (m2/s) | End caps | Floor | peak lag wind (m/s) | lag wind at 2 m (m/s) |
-| --- | --- | --- | --- | --- |
-| 1 | on | no-slip | 0.66 | -0.008 |
-| 1 | on | canopy drag, C_D = 2e-3 | 0.74 | -0.669 |
-| 1 | off | no-slip | 10.10 | -0.033 |
-| 1 | off | canopy drag, C_D = 2e-3 | 11.79 | -2.886 |
-| 10 | on | no-slip | 0.17 | -0.001 |
-| 10 | on | canopy drag, C_D = 2e-3 | 0.27 | -0.269 |
-| 10 | off | no-slip | 1.01 | -0.003 |
-| 10 | off | canopy drag, C_D = 2e-3 | 3.05 | -2.865 |
+| nu_t (m2/s) | End caps | peak lag wind (m/s) | lag wind at 10 m (m/s) |
+| --- | --- | --- | --- |
+| 1 | on | 0.69 | -0.365 |
+| 1 | off | 10.58 | -0.987 |
+| 10 | on | 0.23 | -0.233 |
+| 10 | off | 1.61 | -0.963 |
 
 Molecular viscosity only.
 
-| Gas at floor | molecular nu (m2/s) | time to 90 % co-rotation (1 h ramp) | peak wind at 2 m, no-slip (m/s) |
+| Gas at floor | molecular nu (m2/s) | time to 90 % co-rotation (1 h ramp) | peak wind at 10 m (m/s) |
 | --- | --- | --- | --- |
-| O'Neill 1974 at 290.0 K | 1.47e-5 | 293 d | 175.8 |
-| SP-413 at 290.0 K | 2.97e-5 | 205 d | 174.6 |
+| O'Neill 1974 at 290.0 K | 1.47e-5 | 292 d | 10.7 |
+| SP-413 at 290.0 K | 2.97e-5 | 205 d | 10.8 |
 
-*One-dimensional axisymmetric model with constant eddy viscosities. The wind near the floor depends strongly on the floor condition, which is stated on every row; read the 2 m winds as bounds, not predictions.*
+*One-dimensional axisymmetric model with constant eddy viscosities and a canopy-drag floor (C_D from the suburban log law at 10 m); winds are quoted at that 10 m reference height, the one the drag law is written for. The end-cap sink is the linear Greenspan-Howard result, valid for Rossby number <= 0.3; rows with a larger peak Rossby number (fast ramps) are order-of-magnitude only, and turbulent end caps are not linear. Strong (50 %) spin changes also depend on the blend width of the viscosity closure; changes of 10 % or less do not.*
 <!-- /gen -->

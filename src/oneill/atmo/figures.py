@@ -144,7 +144,7 @@ def spinup_figure(report: AtmosphereReport) -> FigureSpec:
         "radius [m]",
         "relative wind u [m/s]",
         tuple(Series(f"t = {s.hours:g} h", s.radius, s.u) for s in report.snapshots),
-        title="u(r) snapshots (no-slip floor)",
+        title="u(r) snapshots (canopy-drag floor)",
         legend_size=8.0,
     )
     corotation = Panel(

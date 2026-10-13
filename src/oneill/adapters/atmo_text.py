@@ -16,6 +16,7 @@ from oneill.atmo.report import (
     WIND_HEIGHT,
     WIND_SPEED,
 )
+from oneill.atmo.spinup import DRAG_HEIGHT
 from oneill.atmo.surface import Stability
 
 if TYPE_CHECKING:
@@ -315,25 +316,28 @@ def render_parcel(report: AtmosphereReport) -> str:
 
 def render_spinup(report: AtmosphereReport) -> str:
     """Spin-up, spin-down and lag-wind numbers."""
+    floor = report.spin[0].floor
     spin = _table(
         [
             "Hull ramp",
             "nu_t (m2/s)",
             "End caps",
-            "Floor",
             "time to 90 % co-rotation",
-            "peak wind at 2 m (m/s)",
+            f"peak wind at {DRAG_HEIGHT:g} m (m/s)",
             "peak wind anywhere (m/s)",
+            "peak Ro",
+            "linear cap sink valid",
         ],
         [
             [
                 _duration(r.ramp),
                 f"{r.nu:g}",
                 "on" if r.endcap else "off",
-                r.floor,
                 _duration(r.time_to_90),
-                _num(r.peak_wind_2m, 2),
+                _num(r.peak_wind_ref, 1),
                 _num(r.peak_wind_interior, 1),
+                _num(r.max_rossby, 2),
+                "yes" if r.sink_valid else "no (order of magnitude)",
             ]
             for r in report.spin
         ],
@@ -359,17 +363,15 @@ def render_spinup(report: AtmosphereReport) -> str:
         [
             "nu_t (m2/s)",
             "End caps",
-            "Floor",
             "peak lag wind (m/s)",
-            "lag wind at 2 m (m/s)",
+            f"lag wind at {DRAG_HEIGHT:g} m (m/s)",
         ],
         [
             [
                 f"{r.nu:g}",
                 "on" if r.endcap else "off",
-                r.floor,
                 _num(r.peak, 2),
-                _num(r.wind_2m, 3),
+                _num(r.wind_ref, 3),
             ]
             for r in report.lag
         ],
@@ -379,19 +381,24 @@ def render_spinup(report: AtmosphereReport) -> str:
             "Gas at floor",
             "molecular nu (m2/s)",
             "time to 90 % co-rotation (1 h ramp)",
-            "peak wind at 2 m, no-slip (m/s)",
+            f"peak wind at {DRAG_HEIGHT:g} m (m/s)",
         ],
         [
-            [m.label, _sci(m.nu), _duration(m.time_to_90), _num(m.peak_wind_2m, 1)]
+            [m.label, _sci(m.nu), _duration(m.time_to_90), _num(m.peak_wind_ref, 1)]
             for m in report.molecular
         ],
     )
     parts = [
-        "Hull spun from rest to full rate; the air starts at rest.",
+        (
+            f"Floor condition for every row: {floor}. Hull spun from rest to full "
+            "rate; the air starts at rest."
+        ),
         spin,
         (
             "Sudden change of the hull spin rate, with a Rayleigh-switched viscosity "
-            "(larger where angular momentum falls outward)."
+            "(larger where angular momentum falls outward). With end caps the sink "
+            "rate scales with the new hull rate, so spin-down is the slower of the "
+            "pair."
         ),
         sudden,
         (

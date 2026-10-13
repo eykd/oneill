@@ -41,7 +41,8 @@ class TestRendering:
         assert "759x" in blocks["numbers"]
         assert "4.6 to 13.0" in blocks["surface"]
         assert "4.9 h" in blocks["parcel"]
-        assert "canopy drag, C_D = 2e-3" in blocks["spinup"]
+        assert "canopy drag, C_D = 0.0178" in blocks["spinup"]
+        assert "peak wind at 10 m" in blocks["spinup"]
 
     def test_missing_values_render_as_dashes_and_words(
         self, report: AtmosphereReport
@@ -63,7 +64,7 @@ class TestRendering:
     def test_durations_use_sensible_units(self, report: AtmosphereReport) -> None:
         text = render_spinup(report)
         assert "60 min" in text
-        assert "22.7 h" in text
+        assert "23.0 h" in text
         assert " d |" in text
 
 

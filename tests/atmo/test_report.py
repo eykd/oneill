@@ -8,6 +8,7 @@ from oneill.atmo.figures import atmosphere_figures
 from oneill.atmo.gas import ONEILL_1974
 from oneill.atmo.report import (
     CAVEATS,
+    FLOOR_LABEL,
     FLOOR_TEMPERATURE,
     AtmosphereReport,
     build_report,
@@ -97,26 +98,36 @@ def test_parcel_rows(report: AtmosphereReport) -> None:
     assert len(damped.t) == len(damped.height) == len(damped.spinward)
 
 
-def test_spin_rows_attach_the_floor_condition(report: AtmosphereReport) -> None:
-    assert len(report.spin) == 16
-    assert {r.floor for r in report.spin} == {"no-slip", "canopy drag, C_D = 2e-3"}
-    assert {r.floor for r in report.lag} == {"no-slip", "canopy drag, C_D = 2e-3"}
+def test_spin_rows_state_the_floor_condition_and_validity(
+    report: AtmosphereReport,
+) -> None:
+    assert len(report.spin) == 8
+    assert {r.floor for r in report.spin} == {FLOOR_LABEL}
+    assert {r.floor for r in report.lag} == {FLOOR_LABEL}
+    assert "C_D = 0.0178" in FLOOR_LABEL
     row = next(
-        r
-        for r in report.spin
-        if (r.ramp, r.nu, r.endcap, r.floor) == (3600.0, 1.0, True, "no-slip")
+        r for r in report.spin if (r.ramp, r.nu, r.endcap) == (3600.0, 1.0, True)
     )
     assert row.time_to_90 is not None
-    assert row.time_to_90 / 3600.0 == pytest.approx(22.7, abs=0.3)
-    assert row.peak_wind_2m == pytest.approx(6.2, abs=0.2)
+    assert row.time_to_90 / 3600.0 == pytest.approx(23.0, abs=0.5)
+    assert row.peak_wind_ref == pytest.approx(18.3, abs=1.0)
+    assert row.max_rossby > 0.3
+    assert not row.sink_valid
+    gentle = next(
+        r for r in report.spin if (r.ramp, r.nu, r.endcap) == (86400.0, 10.0, True)
+    )
+    assert gentle.sink_valid
 
 
-def test_spin_down_beats_spin_up(report: AtmosphereReport) -> None:
+def test_sudden_changes_are_nearly_symmetric_and_spin_down_is_slower(
+    report: AtmosphereReport,
+) -> None:
     down, up = report.sudden[0], report.sudden[1]
     assert down.delta_fraction < 0.0 < up.delta_fraction
     assert down.time_to_adjust is not None
     assert up.time_to_adjust is not None
-    assert down.time_to_adjust < up.time_to_adjust
+    # with end caps tau_E ~ 1 / sqrt(new rate): spin-down (0.9) is the slower
+    assert down.time_to_adjust / up.time_to_adjust == pytest.approx(1.08, abs=0.04)
 
 
 def test_reference_run_data(report: AtmosphereReport) -> None:
@@ -129,7 +140,7 @@ def test_reference_run_data(report: AtmosphereReport) -> None:
 
 def test_every_number_is_finite(report: AtmosphereReport) -> None:
     for row in report.spin:
-        assert math.isfinite(row.peak_wind_2m)
+        assert math.isfinite(row.peak_wind_ref)
     for lag in report.lag:
         assert lag.peak > 0.0
 

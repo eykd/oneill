@@ -3,25 +3,49 @@
 ``u(r, t)`` is the azimuthal wind relative to the hull. Angular momentum of the
 air obeys, with the hull spinning at ``Omega(t)`` and accelerating at ``alpha``::
 
-    du/dt = (1/r^2) d/dr( r^3 nu d(u/r)/dr ) - u/tau_E - r alpha
+    du/dt = (1/r^2) d/dr( r^3 nu d(u/r)/dr ) - u/tau_E - drag - r alpha
 
 The viscous term is written in stress form, so a solid-body ``u ~ r`` feels no
 viscous force (for constant ``nu`` it equals ``nu (u'' + u'/r - u/r^2)``).
 ``u/tau_E`` is the Ekman pumping of the end caps (Greenspan & Howard 1963;
 ``tau_E = (L/2) / sqrt(nu Omega)``, ``docs/research/atmosphere-literature.md``
-Q2) and can be switched off. ``r alpha`` is the apparent force from the
-accelerating hull.
+Q2) and can be switched off; it is written as the rate ``sqrt(nu Omega) / (L/2)``,
+which stays finite as ``Omega -> 0`` (spin-up from rest). ``r alpha`` is the
+apparent force from the accelerating hull.
 
-Eddy viscosity has two regimes (Q4): the larger ``nu_unstable`` wherever the
-absolute angular momentum ``Gamma = r (Omega r + u)`` decreases outward
-(``d Gamma^2 / dr < 0``, Rayleigh), the smaller ``nu_stable`` elsewhere. Spin-up
-from the floor is stable and slow; spin-down is unstable and fast (Kaiser 2020).
+**Floor.** By default the floor is a canopy-drag layer: a body force
+``-C_D |u_r| u / z_r`` in the bottom ``z_r`` metres (default 10 m), where ``u_r`` is
+the wind at ``z_r`` and ``C_D = (kappa / ln(z_r / z0))^2`` follows from a terrain
+roughness (:data:`DEFAULT_FLOOR_DRAG`). The stress on the air is then
+``C_D |u_r| u_r`` and the wind at ``z_r`` is the one the drag law is written for,
+so quote winds there. A no-slip floor (``floor_drag=None``) is kept for analytic
+tests only: with ``nu_t`` of order 1 m^2/s it leaves a sub-metre boundary layer
+that no real surface has. ``floor_drag=0`` is free slip.
 
-The floor is either no-slip, or a quadratic stress ``nu r d(u/r)/dr = -C_D |u| u``
-on the first cell (``C_D`` dimensionless; ``0`` is free slip). The scheme is a
-finite-volume theta method (Crank-Nicolson, with two backward-Euler starting steps)
-on a grid clustered toward the floor. It conserves angular momentum exactly:
-:class:`Budget` holds the wall torque and end-cap sink that close the books.
+**Viscosity regimes** (Q4). Eddy viscosity is the larger ``nu_unstable`` where the
+absolute angular momentum ``Gamma = r (Omega r + u)`` falls outward and the smaller
+``nu_stable`` elsewhere, blended smoothly with the Rayleigh discriminant
+``q = -(2 Omega_in + du/dr) / (2 |Omega_in|)`` (``Omega_in = Omega + u/r`` is the
+air's inertial rotation rate; ``q = -1`` for any solid-body state, ``q > 0`` is
+unstable) through ``(1 + tanh(q / 0.3)) / 2``. A hard switch on the previous
+step's wind, with Crank-Nicolson, made the scheme ring at the sharp unstable layer
+(odd-even errors of order 10 m/s). The blend, Picard iteration of the viscosity
+within each step and an L-stable time scheme remove that; a small residual
+2-cell stair (about 1 % of the peak wind) remains where the shear sits at the
+marginal-stability threshold, as it does in rotating-channel DNS. Strong
+(order 50 %) spin changes depend on the blend width (a closure choice); changes of
+10 % or less do not.
+
+**Validity.** The end-cap sink is the *linear* Greenspan-Howard result, valid for
+Rossby number ``Ro = |u| / (2 Omega r) <~ 0.3``. :attr:`SpinupResult.max_rossby`
+reports the largest ``Ro`` reached; fast spin changes exceed it (and turbulent
+end caps are not linear), so those results are order-of-magnitude only.
+
+The scheme is a finite-volume theta method (default backward Euler, which is
+L-stable; ``theta=0.5`` Crank-Nicolson with two backward-Euler starting steps is
+available for smooth problems) on a grid clustered toward the floor. It conserves
+angular momentum exactly: :class:`Budget` holds the floor torque and end-cap sink
+that close the books.
 """
 
 import math
@@ -30,6 +54,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from oneill.atmo.surface import SUBURBAN, drag_coefficient
 from oneill.core.checks import finite, positive
 
 if TYPE_CHECKING:
@@ -41,10 +66,23 @@ if TYPE_CHECKING:
 
     type Stop = Callable[[float, NDArray[np.float64]], bool]
 
+DRAG_HEIGHT = 10.0
+"""Reference height ``z_r`` of the canopy-drag floor, in m."""
+
+DEFAULT_FLOOR_DRAG = drag_coefficient(DRAG_HEIGHT, SUBURBAN.z0)
+"""``C_D`` for the suburban roughness (z0 = 0.5 m) at 10 m: about 0.018."""
+
+LINEAR_SINK_ROSSBY = 0.3
+"""Largest Rossby number for which the linear end-cap sink is trusted."""
+
 _MAX_STEPS = 200_000
 _LAG_ITERATIONS = 80
+_PICARD_ITERATIONS = 3
 _STARTUP_STEPS = 2
 _MIN_CELLS = 8
+_BLEND_WIDTH = 0.3
+_BLEND_FLOOR = 0.2
+_TINY = 1e-12
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,29 +91,42 @@ class SpinupParams:
 
     Attributes:
         nu_stable: Viscosity (molecular or eddy) where angular momentum rises
-            outward, m^2/s. It also sets ``tau_E``.
+            outward, m^2/s.
         nu_unstable: Viscosity where angular momentum falls outward, m^2/s;
             defaults to ``nu_stable``.
-        floor_drag: ``None`` for a no-slip floor, else the quadratic drag
-            coefficient ``C_D`` (``0`` for free slip).
+        floor_drag: Canopy-drag coefficient ``C_D`` (default
+            :data:`DEFAULT_FLOOR_DRAG`); ``None`` for a no-slip floor (analytic
+            tests only), ``0`` for free slip.
+        drag_height: Thickness ``z_r`` of the drag layer and height of the wind
+            the drag law uses, m.
         endcap: Include the end-cap Ekman pumping sink.
+        nu_endcap: Viscosity in ``tau_E``; defaults to ``nu_stable`` (the end-cap
+            layer is taken to be in the stable regime).
         n_cells: Radial cells.
         stretch: Grid clustering toward the floor (``0`` is uniform; the smallest
             cell is about ``R/n`` times ``beta / cosh^2(beta)``).
+        theta: Time-scheme weight, ``1`` backward Euler (default), ``0.5``
+            Crank-Nicolson.
     """
 
     nu_stable: float
     nu_unstable: float | None = None
-    floor_drag: float | None = None
+    floor_drag: float | None = DEFAULT_FLOOR_DRAG
+    drag_height: float = DRAG_HEIGHT
     endcap: bool = True
+    nu_endcap: float | None = None
     n_cells: int = 120
     stretch: float = 2.5
+    theta: float = 1.0
 
     def __post_init__(self) -> None:
-        """Validate the viscosities, drag and grid size."""
+        """Validate the viscosities, drag, grid size and scheme weight."""
         positive("nu_stable", self.nu_stable)
         if self.nu_unstable is not None:
             positive("nu_unstable", self.nu_unstable)
+        if self.nu_endcap is not None:
+            positive("nu_endcap", self.nu_endcap)
+        positive("drag_height", self.drag_height)
         if self.floor_drag is not None and not (
             math.isfinite(self.floor_drag) and self.floor_drag >= 0.0
         ):
@@ -87,11 +138,19 @@ class SpinupParams:
         if not (math.isfinite(self.stretch) and self.stretch >= 0.0):
             msg = f"stretch must be non-negative and finite, got {self.stretch!r}"
             raise ValueError(msg)
+        if not 0.5 <= self.theta <= 1.0:  # noqa: PLR2004
+            msg = f"theta must lie in [0.5, 1], got {self.theta!r}"
+            raise ValueError(msg)
 
     @property
     def nu_high(self) -> float:
         """Viscosity used in the unstable regime."""
         return self.nu_stable if self.nu_unstable is None else self.nu_unstable
+
+    @property
+    def nu_cap(self) -> float:
+        """Viscosity used in the end-cap rate."""
+        return self.nu_stable if self.nu_endcap is None else self.nu_endcap
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +183,7 @@ class Budget:
 
     Attributes:
         dt: Step sizes in s.
-        wall: Torque exchanged with the floor.
+        wall: Torque exchanged with the floor (floor drag, or the no-slip wall).
         endcap: Torque removed by end-cap Ekman pumping (non-positive for ``u > 0``).
         hull: Apparent torque from the hull's angular acceleration.
     """
@@ -149,6 +208,8 @@ class SpinupResult:
         budget: Closing angular-momentum rates.
         wall_wind_is_zero: ``True`` for a no-slip floor.
         ramp_end: Time the hull stops accelerating, s (0 if it never did).
+        drag_height: Height ``z_r`` of the floor-drag reference wind, m.
+        endcap: Whether the end-cap sink was on.
     """
 
     t: NDArray[np.float64]
@@ -160,6 +221,8 @@ class SpinupResult:
     budget: Budget
     wall_wind_is_zero: bool
     ramp_end: float
+    drag_height: float = DRAG_HEIGHT
+    endcap: bool = True
 
     @property
     def corotation(self) -> NDArray[np.float64]:
@@ -177,6 +240,17 @@ class SpinupResult:
     def relative_angular_momentum(self) -> NDArray[np.float64]:
         """``sum(M u)`` at each time, proportional to the air's lag."""
         return np.asarray(self.u @ self.moment)
+
+    @property
+    def max_rossby(self) -> float:
+        """Largest ``|u| / (2 Omega r)`` reached, with ``Omega`` the final hull rate."""
+        omega = float(self.omega.max())
+        return float(np.max(np.abs(self.u) / (2.0 * omega * self.radius)))
+
+    @property
+    def sink_valid(self) -> bool:
+        """``True`` if the linear end-cap sink is trusted (Ro <= 0.3 throughout)."""
+        return self.max_rossby <= LINEAR_SINK_ROSSBY
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,36 +300,62 @@ def _wind_at_height(
 
 
 def peak_wind_at_height(result: SpinupResult, height: float) -> float:
-    """Largest ``|u|`` over the run at ``height`` metres above the floor, in m/s."""
+    """Largest ``|u|`` at ``height`` metres above the floor after ``t = 0``, in m/s.
+
+    The initial state is excluded: for a sudden change it is just the imposed
+    jump. Quote winds at ``result.drag_height`` unless the floor is no-slip.
+    """
     return max(
         abs(
             _wind_at_height(
-                result.radius, row, result.faces[-1], height, result.wall_wind_is_zero
+                result.radius,
+                row,
+                result.faces[-1],
+                height,
+                result.wall_wind_is_zero,
             )
         )
-        for row in result.u
+        for row in result.u[1:]
     )
+
+
+def _first_crossing(
+    t: NDArray[np.float64],
+    metric: NDArray[np.float64],
+    level: float,
+    earliest: float = 0.0,
+) -> float | None:
+    """Linearly interpolated time at which ``metric`` first reaches ``level``.
+
+    Only samples at or after ``earliest`` count; the result is not quantised to
+    the time step.
+    """
+    idx = np.flatnonzero((t >= earliest) & (metric >= level))
+    if idx.size == 0:
+        return None
+    i = int(idx[0])
+    if i == 0 or t[i - 1] < earliest:
+        return float(t[i])
+    frac = (level - metric[i - 1]) / (metric[i] - metric[i - 1])
+    return float(t[i - 1] + frac * (t[i] - t[i - 1]))
 
 
 def time_to_corotation(result: SpinupResult, fraction: float = 0.9) -> float | None:
     """First time at or after the hull ramp that co-rotation reaches ``fraction``.
 
-    Returns ``None`` if it never does.
+    Linearly interpolated between steps; ``None`` if it never does.
     """
-    ok = (result.t >= result.ramp_end) & (result.corotation >= fraction)
-    idx = np.flatnonzero(ok)
-    return None if idx.size == 0 else float(result.t[idx[0]])
+    return _first_crossing(result.t, result.corotation, fraction, result.ramp_end)
 
 
 def time_to_adjust(result: SpinupResult, fraction: float = 0.9) -> float | None:
     """First time the initial lag has decayed by ``fraction`` (sudden changes).
 
-    Uses ``1 - sum(M u) / sum(M u_0)``; returns ``None`` if it never does.
+    Uses ``1 - sum(M u) / sum(M u_0)``, interpolated between steps; ``None`` if it
+    never does.
     """
     lag = result.relative_angular_momentum
-    done = 1.0 - lag / lag[0]
-    idx = np.flatnonzero(done >= fraction)
-    return None if idx.size == 0 else float(result.t[idx[0]])
+    return _first_crossing(result.t, 1.0 - lag / lag[0], fraction)
 
 
 # --- numerics ----------------------------------------------------------------------
@@ -285,6 +385,14 @@ def _grid(radius: float, n: int, stretch: float) -> _Grid:
 
 
 @dataclass(frozen=True, slots=True)
+class _Operator:
+    lower: NDArray[np.float64]
+    diag: NDArray[np.float64]
+    upper: NDArray[np.float64]
+    wall: NDArray[np.float64]  # floor torque coefficients: wall rate = -wall . u
+
+
+@dataclass(frozen=True, slots=True)
 class _Model:
     grid: _Grid
     params: SpinupParams
@@ -292,50 +400,64 @@ class _Model:
     hull: HullSpin
 
     def sink_rate(self, t: float) -> float:
-        """End-cap Ekman rate ``sqrt(nu Omega) / (L/2)`` in 1/s."""
+        """End-cap Ekman rate ``sqrt(nu Omega) / (L/2)`` in 1/s (0 at Omega = 0)."""
         if not self.params.endcap:
             return 0.0
         omega = abs(self.hull.omega(t))
-        return math.sqrt(self.params.nu_stable * omega) / self.half_length
+        return math.sqrt(self.params.nu_cap * omega) / self.half_length
 
     def viscosity_faces(
         self, u: NDArray[np.float64], omega: float
     ) -> NDArray[np.float64]:
-        """Face viscosities chosen by the Rayleigh criterion on ``Gamma^2``."""
+        """Face viscosities blended smoothly by the Rayleigh discriminant.
+
+        ``q = -(2 Omega + u/r + du/dr)`` is positive where ``Gamma = r (Omega r + u)``
+        falls outward; the weight of ``nu_unstable`` is ``(1 + tanh(q / q0)) / 2``.
+        """
         g = self.grid
-        wall_u = 0.0 if self.params.floor_drag is None else float(u[-1])
-        gamma = g.centres * (omega * g.centres + u)
-        r_wall = g.faces[-1]
-        gamma_all = np.append(gamma, r_wall * (omega * r_wall + wall_u))
-        unstable = np.zeros(len(g.faces), dtype=bool)
-        unstable[1:] = gamma_all[1:] ** 2 < gamma_all[:-1] ** 2
-        return np.where(unstable, self.params.nu_high, self.params.nu_stable)
+        p = self.params
+        if p.nu_high == p.nu_stable:
+            return np.full(len(g.faces), p.nu_stable)
+        q = np.zeros(len(g.faces))
+        du = np.diff(u) / np.diff(g.centres)
+        u_face = 0.5 * (u[1:] + u[:-1])
+        spin_in = omega + u_face / g.faces[1:-1]  # inertial rotation rate of the air
+        q[1:-1] = -(2.0 * spin_in + du) / (
+            2.0 * abs(spin_in) + _BLEND_FLOOR * abs(omega)
+        )
+        if p.floor_drag is None:  # no-slip wall: u = 0 at r = R
+            q[-1] = -(2.0 * omega - u[-1] / (g.faces[-1] - g.centres[-1])) / (
+                2.0 * abs(omega) + _BLEND_FLOOR * abs(omega) + _TINY
+            )
+        weight = 0.5 * (1.0 + np.tanh(q / _BLEND_WIDTH))
+        return p.nu_stable + (p.nu_high - p.nu_stable) * weight
 
-    def operator(
-        self, nu: NDArray[np.float64], wall_u: float
-    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], float]:
-        """Viscous tridiagonal operator and the wall-flux coefficient.
+    def operator(self, nu: NDArray[np.float64], u: NDArray[np.float64]) -> _Operator:
+        """Viscous plus floor tridiagonal operator from the wind ``u``.
 
-        Returns ``(lower, diag, upper, wall_coeff)`` such that row ``i`` of the
-        operator acting on ``u`` is the net stress flux into cell ``i``, and the
-        wall flux is ``-wall_coeff * u[-1]``.
+        Row ``i`` acting on a wind is the net stress flux into cell ``i`` minus the
+        floor drag. The floor torque is ``-wall . u``.
         """
         g = self.grid
         rc, rf = g.centres, g.faces
         k = np.zeros(len(rf))
         k[1:-1] = rf[1:-1] ** 3 * nu[1:-1] / np.diff(rc)
-        if self.params.floor_drag is None:
-            k_wall = rf[-1] ** 3 * nu[-1] / (rf[-1] - rc[-1])
-            wall_coeff = k_wall / rc[-1]
-        else:
-            wall_coeff = rf[-1] ** 2 * self.params.floor_drag * abs(wall_u)
         lower = k[:-1] / np.roll(rc, 1)
         upper = k[1:] / np.roll(rc, -1)
         diag = -(k[:-1] + k[1:]) / rc
-        diag[-1] -= wall_coeff
+        wall = np.zeros(len(rc))
+        floor = self.params.floor_drag
+        if floor is None:  # no-slip: stress flux into the wall
+            wall[-1] = rf[-1] ** 3 * nu[-1] / (rf[-1] - rc[-1]) / rc[-1]
+        else:  # drag layer: body force C_D |u_r| / z_r in the bottom z_r metres
+            z_r = self.params.drag_height
+            u_ref = float(np.interp(rf[-1] - z_r, rc, u))
+            overlap = np.clip((rf[1:] - (rf[-1] - z_r)) / np.diff(rf), 0.0, 1.0)
+            wall = floor * abs(u_ref) / z_r * overlap * g.moment
+        diag = diag - wall
         lower[0] = 0.0
         upper[-1] = 0.0
-        return lower, diag, upper, wall_coeff
+        return _Operator(lower, diag, upper, wall)
 
 
 def _thomas(
@@ -358,15 +480,10 @@ def _thomas(
     return np.array(x)
 
 
-def _apply(
-    lower: NDArray[np.float64],
-    diag: NDArray[np.float64],
-    upper: NDArray[np.float64],
-    u: NDArray[np.float64],
-) -> NDArray[np.float64]:
-    out = diag * u
-    out[1:] += lower[1:] * u[:-1]
-    out[:-1] += upper[:-1] * u[1:]
+def _apply(op: _Operator, u: NDArray[np.float64]) -> NDArray[np.float64]:
+    out = op.diag * u
+    out[1:] += op.lower[1:] * u[:-1]
+    out[:-1] += op.upper[:-1] * u[1:]
     return out
 
 
@@ -384,8 +501,9 @@ def simulate(  # noqa: PLR0913
 ) -> SpinupResult:
     """March the model from ``u0`` to ``t_end`` (or until ``stop(t, u)``).
 
-    Steps start at ``dt0`` and grow geometrically to ``dt_max``; the first two
-    are backward Euler to damp the start-up transient.
+    Steps start at ``dt0`` and grow geometrically to ``dt_max``. The viscosity
+    regime and floor drag are Picard-iterated (three passes) within each step.
+    With ``theta < 1`` the first two steps are backward Euler.
 
     Raises:
         ValueError: for invalid time stepping or if the step budget is exceeded.
@@ -399,16 +517,11 @@ def simulate(  # noqa: PLR0913
     if t_end / dt_max > _MAX_STEPS:
         msg = "step budget exceeded; increase dt_max or shorten t_end"
         raise ValueError(msg)
-    model = _Model(
-        _grid(cyl.radius, params.n_cells, params.stretch),
-        params,
-        cyl.length / 2.0,
-        hull,
-    )
-    g = model.grid
+    grid = _grid(cyl.radius, params.n_cells, params.stretch)
+    model = _Model(grid, params, cyl.length / 2.0, hull)
     u = np.array(u0, dtype=np.float64)
-    if u.shape != g.centres.shape:
-        msg = f"u0 must have shape {g.centres.shape}, got {u.shape}"
+    if u.shape != grid.centres.shape:
+        msg = f"u0 must have shape {grid.centres.shape}, got {u.shape}"
         raise ValueError(msg)
 
     ts, us, oms = [0.0], [u], [hull.omega(0.0)]
@@ -417,29 +530,32 @@ def simulate(  # noqa: PLR0913
     cap_r: list[float] = []
     hull_r: list[float] = []
     t, dt = 0.0, dt0
+    mass = grid.moment
     while t < t_end and not (stop is not None and stop(t, u)):
         step = min(dt, t_end - t)
-        theta = 1.0 if len(dts) < _STARTUP_STEPS else 0.5
+        theta = 1.0 if len(dts) < _STARTUP_STEPS else params.theta
         om0, om1 = hull.omega(t), hull.omega(t + step)
-        nu = model.viscosity_faces(u, om0)
-        lo, di, up, wall_coeff = model.operator(nu, float(u[-1]))
         c0, c1 = model.sink_rate(t), model.sink_rate(t + step)
         alpha_bar = (om1 - om0) / step
-        source = -alpha_bar * g.quartic
-        mass = g.moment
-        explicit = _apply(lo, di, up, u) - c0 * mass * u
-        rhs = mass * u / step + (1.0 - theta) * explicit + source
-        u_new = _thomas(
-            -theta * lo,
-            mass / step - theta * (di - c1 * mass),
-            -theta * up,
-            rhs,
-        )
-        wall_r.append(-wall_coeff * (theta * u_new[-1] + (1.0 - theta) * u[-1]))
+        source = -alpha_bar * grid.quartic
+        u_iter = u
+        for _ in range(_PICARD_ITERATIONS):
+            op = model.operator(model.viscosity_faces(u_iter, om1), u_iter)
+            explicit = _apply(op, u) - c0 * mass * u
+            rhs = mass * u / step + (1.0 - theta) * explicit + source
+            u_iter = _thomas(
+                -theta * op.lower,
+                mass / step - theta * (op.diag - c1 * mass),
+                -theta * op.upper,
+                rhs,
+            )
+        u_new = u_iter
+        mixed = theta * u_new + (1.0 - theta) * u
+        wall_r.append(-float(op.wall @ mixed))
         cap_r.append(
             -float(np.sum(mass * (theta * c1 * u_new + (1.0 - theta) * c0 * u)))
         )
-        hull_r.append(-alpha_bar * float(g.quartic.sum()))
+        hull_r.append(-alpha_bar * float(grid.quartic.sum()))
         u, t = u_new, t + step
         dts.append(step)
         ts.append(t)
@@ -449,9 +565,9 @@ def simulate(  # noqa: PLR0913
 
     return SpinupResult(
         t=np.array(ts),
-        radius=g.centres,
-        faces=g.faces,
-        moment=g.moment,
+        radius=grid.centres,
+        faces=grid.faces,
+        moment=grid.moment,
         u=np.array(us),
         omega=np.array(oms),
         budget=Budget(
@@ -459,6 +575,8 @@ def simulate(  # noqa: PLR0913
         ),
         wall_wind_is_zero=params.floor_drag is None,
         ramp_end=0.0 if hull.ramp_time is None else hull.ramp_time,
+        drag_height=params.drag_height,
+        endcap=params.endcap,
     )
 
 
@@ -506,6 +624,10 @@ def sudden_change(
 
     Positive is spin-up (air lags, ``u < 0``); negative is spin-down. The run
     stops once ``fraction`` of the initial lag has gone, or at ``t_max``.
+
+    With end caps the sink rate scales as ``sqrt(Omega)`` of the *new* hull rate,
+    so with equal viscosities a spin-down (``0.9 Omega``) adjusts more slowly than
+    a spin-up (``1.1 Omega``): the asymmetry is the Ekman time, not instability.
     """
     finite("delta_omega", delta_omega)
     if delta_omega == 0.0 or cyl.omega + delta_omega <= 0.0:
@@ -525,26 +647,20 @@ def sudden_change(
 def steady_lag(cyl: Cylinder, params: SpinupParams, alpha: float) -> LagWind:
     """Steady wind lag while the hull accelerates slowly at ``alpha``.
 
-    Solves ``0 = viscous + sink - r alpha`` by a fixed number of fixed-point
-    iterations on the viscosity regime and the quadratic floor drag. With
-    constant ``nu``, no end caps and no-slip this is
+    Solves ``0 = viscous + sink - drag - r alpha`` by a fixed number of damped
+    fixed-point iterations on the viscosity regime and the floor drag. With
+    constant ``nu``, no end caps and a no-slip floor this is
     ``u = alpha r (r^2 - R^2) / (8 nu)``.
     """
     finite("alpha", alpha)
     hull = HullSpin(cyl.omega)
-    model = _Model(
-        _grid(cyl.radius, params.n_cells, params.stretch),
-        params,
-        cyl.length / 2.0,
-        hull,
-    )
-    g = model.grid
+    grid = _grid(cyl.radius, params.n_cells, params.stretch)
+    model = _Model(grid, params, cyl.length / 2.0, hull)
     sink = model.sink_rate(0.0)
-    source = alpha * g.quartic
+    source = alpha * grid.quartic
     u = np.zeros(params.n_cells)
     for _ in range(_LAG_ITERATIONS):
-        nu = model.viscosity_faces(u, cyl.omega)
-        lo, di, up, _ = model.operator(nu, float(u[-1]))
-        u_new = _thomas(lo, di - sink * g.moment, up, source)
-        u = 0.5 * (u + u_new) if params.floor_drag else u_new
-    return LagWind(g.centres, u, g.faces, params.floor_drag is None)
+        op = model.operator(model.viscosity_faces(u, cyl.omega), u)
+        u_new = _thomas(op.lower, op.diag - sink * grid.moment, op.upper, source)
+        u = 0.5 * (u + u_new)
+    return LagWind(grid.centres, u, grid.faces, params.floor_drag is None)

@@ -32,6 +32,8 @@ from oneill.atmo.parcel import (
     steady_rise_speed,
 )
 from oneill.atmo.spinup import (
+    DEFAULT_FLOOR_DRAG,
+    DRAG_HEIGHT,
     SpinupParams,
     hull_spin_up,
     peak_wind_at_height,
@@ -73,7 +75,7 @@ BUOYANCY_EXCESSES = (1.0, 3.0)
 PARCEL_DRAGS = (0.0, 0.01, 0.05)
 RAMPS = (3600.0, 86400.0)
 EDDY_VISCOSITIES = (1.0, 10.0)
-FLOORS = (("no-slip", None), ("canopy drag, C_D = 2e-3", 2.0e-3))
+FLOOR_LABEL = f"canopy drag, C_D = {DEFAULT_FLOOR_DRAG:.4f} (suburb, z0 = 0.5 m)"
 STEP = 0.1
 """Fractional hull spin change used in the sudden-change rows."""
 LAG_FRACTION_PER_DAY = 0.01
@@ -110,9 +112,14 @@ CAVEATS = {
         "the axis by inertial waves and pressure absorbs the Coriolis force."
     ),
     "spinup": (
-        "One-dimensional axisymmetric model with constant eddy viscosities. The wind "
-        "near the floor depends strongly on the floor condition, which is stated on "
-        "every row; read the 2 m winds as bounds, not predictions."
+        "One-dimensional axisymmetric model with constant eddy viscosities and a "
+        "canopy-drag floor (C_D from the suburban log law at 10 m); winds are quoted "
+        "at that 10 m reference height, the one the drag law is written for. The "
+        "end-cap sink is the linear Greenspan-Howard result, valid for Rossby number "
+        "<= 0.3; rows with a larger peak Rossby number (fast ramps) are "
+        "order-of-magnitude only, and turbulent end caps are not linear. Strong "
+        "(50 %) spin changes also depend on the blend width of the viscosity "
+        "closure; changes of 10 % or less do not."
     ),
 }
 
@@ -226,8 +233,10 @@ class SpinRow:
     endcap: bool
     floor: str
     time_to_90: float | None
-    peak_wind_2m: float
+    peak_wind_ref: float
     peak_wind_interior: float
+    max_rossby: float
+    sink_valid: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,7 +258,7 @@ class LagRow:
     endcap: bool
     floor: str
     peak: float
-    wind_2m: float
+    wind_ref: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,7 +268,7 @@ class MolecularRow:
     label: str
     nu: float
     time_to_90: float | None
-    peak_wind_2m: float
+    peak_wind_ref: float
 
 
 @dataclass(frozen=True, eq=False)
@@ -431,34 +440,31 @@ def _spin_rows(
     for ramp in RAMPS:
         for nu in EDDY_VISCOSITIES:
             for endcap in (True, False):
-                for floor, drag in FLOORS:
-                    params = SpinupParams(
-                        nu, endcap=endcap, floor_drag=drag, n_cells=100
+                params = SpinupParams(nu, endcap=endcap, n_cells=100)
+                run = hull_spin_up(cyl, params, cyl.omega / ramp, t_max=3.0e7)
+                rows.append(
+                    SpinRow(
+                        ramp=ramp,
+                        nu=nu,
+                        endcap=endcap,
+                        floor=FLOOR_LABEL,
+                        time_to_90=time_to_corotation(run),
+                        peak_wind_ref=peak_wind_at_height(run, DRAG_HEIGHT),
+                        peak_wind_interior=float(np.abs(run.u).max()),
+                        max_rossby=run.max_rossby,
+                        sink_valid=run.sink_valid,
                     )
-                    run = hull_spin_up(
-                        cyl, params, cyl.omega / ramp, t_max=3.0e7, dt_max=1800.0
-                    )
-                    rows.append(
-                        SpinRow(
-                            ramp=ramp,
-                            nu=nu,
-                            endcap=endcap,
-                            floor=floor,
-                            time_to_90=time_to_corotation(run),
-                            peak_wind_2m=peak_wind_at_height(run, 2.0),
-                            peak_wind_interior=float(np.abs(run.u).max()),
+                )
+                if (ramp, nu, endcap) == (RAMPS[0], 1.0, True):
+                    snapshots = tuple(
+                        Snapshot(
+                            h,
+                            run.radius,
+                            run.u[int(np.argmin(np.abs(run.t - 3600.0 * h)))],
                         )
+                        for h in SNAPSHOT_HOURS
                     )
-                    if (ramp, nu, endcap, drag) == (RAMPS[0], 1.0, True, None):
-                        snapshots = tuple(
-                            Snapshot(
-                                h,
-                                run.radius,
-                                run.u[int(np.argmin(np.abs(run.t - 3600.0 * h)))],
-                            )
-                            for h in SNAPSHOT_HOURS
-                        )
-                        hours, corot = run.t / 3600.0, run.corotation
+                    hours, corot = run.t / 3600.0, run.corotation
     return tuple(rows), snapshots, hours, corot
 
 
@@ -467,9 +473,7 @@ def _sudden_rows(cyl: Cylinder) -> tuple[SuddenRow, ...]:
     for endcap in (True, False):
         for sign in (-1.0, 1.0):
             params = SpinupParams(1.0, nu_unstable=10.0, endcap=endcap, n_cells=100)
-            run = sudden_change(
-                cyl, params, sign * STEP * cyl.omega, t_max=3.0e7, dt_max=1800.0
-            )
+            run = sudden_change(cyl, params, sign * STEP * cyl.omega, t_max=3.0e7)
             rows.append(SuddenRow(sign * STEP, 1.0, 10.0, endcap, time_to_adjust(run)))
     return tuple(rows)
 
@@ -479,15 +483,16 @@ def _lag_rows(cyl: Cylinder) -> tuple[LagRow, ...]:
     rows = []
     for nu in EDDY_VISCOSITIES:
         for endcap in (True, False):
-            for floor, drag in FLOORS:
-                lag = steady_lag(
-                    cyl,
-                    SpinupParams(nu, endcap=endcap, floor_drag=drag, n_cells=200),
-                    alpha,
+            lag = steady_lag(cyl, SpinupParams(nu, endcap=endcap, n_cells=200), alpha)
+            rows.append(
+                LagRow(
+                    nu,
+                    endcap,
+                    FLOOR_LABEL,
+                    lag.peak,
+                    lag.wind_at_height(DRAG_HEIGHT),
                 )
-                rows.append(
-                    LagRow(nu, endcap, floor, lag.peak, lag.wind_at_height(2.0))
-                )
+            )
     return tuple(rows)
 
 
@@ -503,7 +508,10 @@ def _molecular_rows(cyl: Cylinder, gases: tuple[Gas, ...]) -> tuple[MolecularRow
         )
         rows.append(
             MolecularRow(
-                g.label, g.nu, time_to_corotation(run), peak_wind_at_height(run, 2.0)
+                g.label,
+                g.nu,
+                time_to_corotation(run),
+                peak_wind_at_height(run, DRAG_HEIGHT),
             )
         )
     return tuple(rows)
