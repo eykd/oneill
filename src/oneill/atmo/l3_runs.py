@@ -55,8 +55,10 @@ class Case:
         nu: Eddy viscosity in m^2/s.
         coriolis_buoyancy: Include the mass-consistent Coriolis-buoyancy force.
         r_in_fraction: Inner wall radius over ``R``.
-        heating: ``"cycle"`` (day/night, flux-neutral windows), ``"steady"`` or
-            ``"uniform_sink"`` (day/night, windows inert, relax the area mean).
+        heating: ``"cycle"`` (day/night, flux-neutral windows), ``"steady"``,
+            ``"window_sink"`` (day/night, windows a constant sink equal to the land
+            daily mean) or ``"uniform_sink"`` (day/night, windows inert, relax the
+            area mean).
     """
 
     name: str
@@ -72,6 +74,12 @@ CASES: dict[str, Case] = {
     for c in (
         Case(
             "primary", "day/night, flux-neutral windows, Coriolis-buoyancy on, nu_t = 1"
+        ),
+        Case(
+            "window_sink",
+            "as primary but the windows are a constant sink equal to the land daily "
+            "mean (neutral over a day, not at every instant)",
+            heating="window_sink",
         ),
         Case(
             "steady",
@@ -110,6 +118,10 @@ def case_config(
     gas = SP413.at_temperature(FLOOR_TEMPERATURE)  # the half-atmosphere habitat
     if case.heating == "steady":
         forcing = Forcing(land_flux=STEADY_FLUX, edge_width=width)
+    elif case.heating == "window_sink":
+        forcing = Forcing(
+            DAY_FLUX, NIGHT_FLUX, period=DAY, window="constant", edge_width=width
+        )
     elif case.heating == "uniform_sink":
         forcing = Forcing(
             DAY_FLUX, NIGHT_FLUX, period=DAY, window="zero", edge_width=width

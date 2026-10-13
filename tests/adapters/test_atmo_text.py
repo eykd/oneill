@@ -44,6 +44,8 @@ class TestRendering:
         assert "SP-413 at 290.0 K" in blocks["gas"]
         assert "1828" in blocks["equilibrium"]
         assert "759x" in blocks["numbers"]
+        assert "2π f_shed / 2Ω" in blocks["numbers"]
+        assert "shedding / 2 omega" not in blocks["numbers"]
         assert "4.6 to 13.0" in blocks["surface"]
         assert "4.9 h" in blocks["parcel"]
         assert "canopy drag, C_D = 0.0178" in blocks["spinup"]

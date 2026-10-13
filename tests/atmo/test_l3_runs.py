@@ -127,6 +127,7 @@ class TestCases:
     def test_the_production_set(self) -> None:
         assert set(CASES) == {
             "primary",
+            "window_sink",
             "steady",
             "cb_off",
             "nu10",
@@ -148,13 +149,18 @@ class TestCases:
         assert primary.forcing.edge_width == 0.0
         smoothed = case_config(CASES["primary"], cyl, n_theta=256, edge_cells=2.0)
         assert smoothed.forcing.edge_width == pytest.approx(2.0 * 2.0 * math.pi / 256.0)
-        for name in ("steady", "uniform_sink"):
+        for name in ("steady", "uniform_sink", "window_sink"):
             soft = case_config(CASES[name], cyl, n_theta=128, edge_cells=1.0)
             assert soft.forcing.edge_width == pytest.approx(2.0 * math.pi / 128.0)
         assert not case_config(CASES["cb_off"], cyl).coriolis_buoyancy
         assert case_config(CASES["nu10"], cyl).nu == 10.0
         assert case_config(CASES["rin005"], cyl).r_in_fraction == 0.05
         assert case_config(CASES["rin02"], cyl).r_in_fraction == 0.2
+        sink_window = case_config(CASES["window_sink"], cyl)
+        assert sink_window.forcing.window == "constant"
+        assert sink_window.forcing.period == DAY
+        assert sink_window.tau_relax is None
+        assert sink_window.nu == 1.0
         steady = case_config(CASES["steady"], cyl)
         assert steady.forcing.period is None
         sink = case_config(CASES["uniform_sink"], cyl)

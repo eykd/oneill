@@ -77,6 +77,28 @@ class TestForcing:
         off_edge = np.abs(np.sin(3.0 * theta)) > 0.01
         assert tiny[off_edge] == pytest.approx(hard[off_edge], abs=1e-3)
 
+    def test_constant_window_sink_is_neutral_over_a_day_not_at_every_instant(
+        self,
+    ) -> None:
+        theta = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
+        f = Forcing(
+            land_flux=200.0, night_flux=-30.0, period=86400.0, window="constant"
+        )
+        assert f.daily_mean == pytest.approx(170.0 / math.pi)
+        night = f.flux(theta, 0.75 * 86400.0)  # land at -30, windows still a sink
+        window = night[np.abs(np.sin(3.0 * theta)) > 0.1][
+            np.sin(3.0 * theta[np.abs(np.sin(3.0 * theta)) > 0.1]) < 0.0
+        ]
+        assert np.all(window == pytest.approx(-170.0 / math.pi))
+        assert np.mean(night) < 0.0  # net cooling at night (land -30 vs window -54)
+        times = np.linspace(0.0, 86400.0, 960, endpoint=False)
+        mean_flux = np.array([np.mean(f.flux(theta, t)) for t in times])
+        assert np.mean(mean_flux) == pytest.approx(0.0, abs=0.01)  # neutral over a day
+        assert np.max(np.abs(mean_flux)) > 10.0  # but not instant by instant
+        steady = Forcing(land_flux=80.0, window="constant")
+        assert steady.daily_mean == 80.0
+        assert np.mean(steady.flux(theta, 0.0)) == pytest.approx(0.0, abs=1e-9)
+
     def test_phase_shifts_the_pattern(self) -> None:
         theta = np.array([0.1, 0.1 + math.pi / 3.0])
         shifted = Forcing(phase=math.pi / 3.0)
@@ -285,6 +307,36 @@ class TestHeatBudget:
         run_steps(fm, fs, 5.0, 40)
         expected = 2.0 * math.pi * fm.r_in * (50.0 / flux_cfg.rho_cp) * fs.t
         assert fm.heat_content(fs) == pytest.approx(-expected, rel=1e-9)
+
+
+class TestWindowSinkHeatContent:
+    def test_heat_content_drifts_by_no_more_than_one_days_swing(self) -> None:
+        cfg = small(
+            advection=False,
+            forcing=Forcing(
+                land_flux=200.0, night_flux=-30.0, period=86400.0, window="constant"
+            ),
+        )
+        model = Annulus(cfg)
+        state = model.initial_state(amplitude=0.0)
+        contents = []
+        for _ in range(144):  # one day in 10-minute steps
+            run_steps(model, state, 600.0, 1)
+            contents.append(model.heat_content(state))
+        swing = (
+            2.0
+            * math.pi
+            * cfg.radius
+            * 0.5  # land fraction
+            * (200.0 / math.pi)
+            * 86400.0
+            / cfg.rho_cp
+        )
+        assert max(abs(c) for c in contents) <= swing
+        assert max(abs(c) for c in contents) > 0.1 * swing  # it does store heat
+        assert contents[-1] == pytest.approx(
+            0.0, abs=1e-3 * swing
+        )  # closed after a day
 
 
 class TestDragAndDamping:

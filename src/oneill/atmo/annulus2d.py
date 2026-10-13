@@ -76,6 +76,8 @@ class Forcing:
         period: Day length in s for a sine day/night cycle; ``None`` is steady.
         strips: Number of land strips (equal number of window strips).
         window: ``"neutral"`` (window flux balances the land flux, zero net flux),
+            ``"constant"`` (windows are a constant sink equal to the land strips'
+            daily-mean flux: flux-neutral over a day, not at every instant),
             ``"zero"`` (windows do not exchange heat), or ``"uniform"`` (no
             strips: the land flux everywhere, an axisymmetric case).
         phase: Azimuth in rad of the start of the first land strip.
@@ -104,9 +106,23 @@ class Forcing:
             raise ValueError(msg)
         if self.period is not None:
             positive("period", self.period)
-        if self.window not in ("neutral", "zero", "uniform"):
-            msg = f"window must be 'neutral', 'zero' or 'uniform', got {self.window!r}"
+        if self.window not in ("neutral", "constant", "zero", "uniform"):
+            msg = (
+                "window must be 'neutral', 'constant', 'zero' or 'uniform', "
+                f"got {self.window!r}"
+            )
             raise ValueError(msg)
+
+    @property
+    def daily_mean(self) -> float:
+        """Mean land flux over a day in W/m^2 (``land_flux`` itself if steady).
+
+        A sine day carries the positive half-wave at ``land_flux`` and the negative
+        one at ``night_flux``; each averages ``1/pi`` of its peak over the day.
+        """
+        if self.period is None:
+            return self.land_flux
+        return (self.land_flux + self.night_flux) / math.pi
 
     def land_level(self, t: float) -> float:
         """Land flux in W/m^2 at time ``t``."""
@@ -128,9 +144,11 @@ class Forcing:
             sector = np.floor((theta - self.phase) / (math.pi / self.strips))
             land = (sector.astype(int) % 2 == 0).astype(np.float64)
         window = 0.0
-        if self.window == "neutral" and np.sum(1.0 - land) > 0.0:
-            # exactly zero net flux on the grid
-            window = -level * float(np.sum(land) / np.sum(1.0 - land))
+        if self.window in ("neutral", "constant") and np.sum(1.0 - land) > 0.0:
+            # "neutral": exactly zero net flux on the grid at every instant;
+            # "constant": the same, but for the daily-mean land flux
+            reference = level if self.window == "neutral" else self.daily_mean
+            window = -reference * float(np.sum(land) / np.sum(1.0 - land))
         return np.asarray(land * level + (1.0 - land) * window)
 
 

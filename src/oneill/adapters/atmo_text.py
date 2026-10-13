@@ -181,7 +181,7 @@ def render_numbers(report: AtmosphereReport) -> str:
             "N (1/s)",
             "Rossby radius (m)",
             "shedding f (Hz)",
-            "shedding / 2 omega",
+            "2π f_shed / 2Ω",
         ],
         [
             [
@@ -566,7 +566,16 @@ def _wall(seconds: float | None) -> str:
     return _duration(seconds)
 
 
-CASE_ORDER = ("primary", "steady", "cb_off", "nu10", "rin005", "rin02", "uniform_sink")
+CASE_ORDER = (
+    "primary",
+    "window_sink",
+    "steady",
+    "cb_off",
+    "nu10",
+    "rin005",
+    "rin02",
+    "uniform_sink",
+)
 
 _RENDERERS: dict[str, Callable[[AtmosphereReport], str]] = {
     "gas": render_gas,
