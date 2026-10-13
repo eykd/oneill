@@ -15,10 +15,24 @@ temperature is ``theta (p / p_rim)^kappa`` and its density ``p / (R_s T_p)``.
 
 Angular momentum about the axis is conserved when ``k = 0`` (all other forces are
 radial), so a parcel rising by ``dr`` acquires a relative spinward velocity
-``omega (R0^2 / r - r)``, about ``2 omega dr`` (11 m/s per 100 m). That is an
-**upper bound for compact 3-D thermals**. For plumes uniform along the axis the
-pressure field absorbs the Coriolis force and the drift is much smaller
-(``docs/research/atmosphere-literature.md``, Q7-Q8).
+``omega (R0^2 / r - r)``, about ``2 omega dr`` (11 m/s per 100 m).
+
+**This is the no-perturbation-pressure bound, not a prediction.** The parcel is a
+point mass in an undisturbed environment: it has no perturbation pressure and no
+added mass. A real 100 m thermal has a Rossby number of about 0.01, deep in the
+Taylor-Proudman regime: inertial waves stretch it along the axis within about one
+inertial period, and for axially uniform structures the pressure field absorbs
+the Coriolis force entirely (``docs/research/atmosphere-literature.md``, Q7-Q8).
+So the trapping below and the spinward drift are ceilings of this simplified
+model; the realistic answer needs the 2-D solver (L3).
+
+With constant buoyancy ``b`` and drag ``k`` the rise is a damped inertial
+oscillation (eigenvalues ``-k +- 2 i omega``, so the oscillation stays at
+``2 omega`` and ``k`` only sets the decay) about a steady rise
+``w = k b / (k^2 + 4 omega^2)`` with spinward drift ``u = 2 omega w / k``. Only
+``k = 0`` is trapped for ever (at ``b / (2 omega^2)``); any ``k > 0`` eventually
+reaches the cloud base, with the steady rise peaking at ``b / (4 omega)`` for
+``k = 2 omega``. Reaching it can take hours (see :func:`steady_rise_speed`).
 
 The model uses :func:`oneill.core.integrate.rk4` directly (atmo may not import the
 sibling ``motion`` package, where ``integrate_rotating`` lives). Moist latent
@@ -118,8 +132,8 @@ class ParcelResult:
         max_rise: Largest height gain above the release point, in m.
         deflection: Spinward displacement (m) when the parcel first has risen
             ``settings.rise`` metres (100 m by default), or ``None`` if it never does.
-            A buoyant parcel with little drag is trapped by the Coriolis force
-            and oscillates, so for small ``k`` this is usually ``None``.
+            It is ``None`` for runs too short to get there (a drag-free parcel
+            never does: see the module docstring).
         drift_speed: Spinward velocity (m/s) at that point.
         peak_speed: Largest relative speed on the trajectory, m/s.
         lcl_height: True height of the cloud base (m), if a humidity was given and
@@ -144,6 +158,18 @@ class ParcelResult:
     ended_at_floor: bool
 
 
+def steady_rise_speed(buoyancy: float, drag: float, omega: float) -> float:
+    """Long-time rise speed ``k b / (k^2 + 4 omega^2)`` of a buoyant parcel, m/s.
+
+    ``buoyancy`` is the constant buoyant acceleration ``b`` in m/s^2. The
+    corresponding steady spinward drift is ``2 omega w / k``.
+    """
+    positive("omega", omega)
+    return (
+        finite("drag", drag) * finite("buoyancy", buoyancy) / (drag**2 + 4.0 * omega**2)
+    )
+
+
 def _first_crossing(
     t: NDArray[np.float64], values: NDArray[np.float64], level: float
 ) -> tuple[float, int] | None:
@@ -163,6 +189,43 @@ def _interp_at(
 ) -> NDArray[np.float64]:
     frac = (time - t[i - 1]) / (t[i] - t[i - 1])
     return np.asarray(series[i - 1] + frac * (series[i] - series[i - 1]))
+
+
+def _march(
+    deriv: Callable[[float, Vec3], Vec3],
+    y0: Vec3,
+    cfg: RunSettings,
+    radius: float,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], bool]:
+    """Advance sample by sample; stop at floor contact (interpolated) or the height."""
+    y = y0
+    times = [0.0]
+    states = [y]
+    ended_at_floor = False
+    for k in range(1, math.ceil(cfg.t_end / cfg.sample_dt) + 1):
+        t_prev, t_next = times[-1], min(k * cfg.sample_dt, cfg.t_end)
+        n_sub = math.ceil((t_next - t_prev) / cfg.max_step)
+        h = (t_next - t_prev) / n_sub
+        for i in range(n_sub):
+            t0 = t_prev + i * h
+            y_new = rk4(deriv, t0, y, t0 + h, h)
+            height = radius - float(np.hypot(y_new[0], y_new[1]))
+            if height < 0.0:  # floor contact inside the step: stop at the crossing
+                height_prev = radius - float(np.hypot(y[0], y[1]))
+                frac = height_prev / (height_prev - height)
+                if t0 + frac * h > times[-1]:
+                    times.append(t0 + frac * h)
+                    states.append(y + frac * (y_new - y))
+                ended_at_floor = True
+                break
+            y = y_new
+        if ended_at_floor:
+            break
+        times.append(t_next)
+        states.append(y)
+        if cfg.stop_height is not None and height >= cfg.stop_height:
+            break
+    return np.array(times), np.array(states), ended_at_floor
 
 
 def simulate_parcel(
@@ -228,30 +291,13 @@ def simulate_parcel(
 
     p0 = cyl.floor_point(0.0, 0.0, rel.height)
     v0 = cyl.local_basis(p0).T @ rel.velocity.to_array()
-    y = np.concatenate([p0, v0])
-    times = [0.0]
-    states = [y]
-    ended_at_floor = False
-    n_out = math.ceil(cfg.t_end / cfg.sample_dt)
-    for k in range(1, n_out + 1):
-        t_prev, t_next = times[-1], min(k * cfg.sample_dt, cfg.t_end)
-        y = rk4(deriv, t_prev, y, t_next, cfg.max_step)
-        if radius - float(np.hypot(y[0], y[1])) < 0.0:
-            ended_at_floor = True
-            break
-        times.append(t_next)
-        states.append(y)
-        if (
-            cfg.stop_height is not None
-            and radius - float(np.hypot(y[0], y[1])) >= cfg.stop_height
-        ):
-            break
+    times, states, ended_at_floor = _march(deriv, np.concatenate([p0, v0]), cfg, radius)
 
     return _summarise(
         cyl,
         gas,
-        np.array(times),
-        np.array(states),
+        times,
+        states,
         (rel.height, cfg.rise),
         (ended_at_floor, relative_humidity),
     )

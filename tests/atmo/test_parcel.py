@@ -18,6 +18,7 @@ from oneill.atmo.parcel import (
     Release,
     RunSettings,
     simulate_parcel,
+    steady_rise_speed,
 )
 from oneill.core.cylinder import Cylinder
 from oneill.core.vectors import LocalVector
@@ -137,6 +138,12 @@ class TestWarmParcel:
         assert result.deflection > 0.0
 
     def test_coriolis_traps_the_thermal(self) -> None:
+        """Ceiling of the no-perturbation-pressure model, not a prediction.
+
+        A real 100 m thermal has Ro ~ 0.01 and is elongated along the axis by
+        inertial waves, with pressure absorbing the Coriolis force; see the
+        module docstring.
+        """
         # constant buoyancy b in a rotating frame gives a cycloid: the parcel only
         # rises b / (2 omega^2) = R dT / (2 T), then drifts spinward at b / (2 omega).
         cfg = RunSettings(t_end=600.0, sample_dt=0.5, max_step=0.25)
@@ -177,6 +184,52 @@ class TestWarmParcel:
         assert 0.0 < result.drift_speed < 2.0 * OMEGA * 100.0
 
 
+class TestLongRun:
+    @pytest.mark.parametrize("drag", [0.02, 0.05, 2.0 * OMEGA])
+    def test_settles_to_the_steady_rise_and_drift(self, drag: float) -> None:
+        cfg = RunSettings(t_end=600.0, sample_dt=1.0, max_step=0.5)
+        result = run(Release(temperature_excess=1.0, drag=drag), settings=cfg)
+        r = float(np.hypot(*result.position[-1, :2]))
+        buoyancy = OMEGA**2 * r * 1.0 / 290.0  # theta_p/theta_e is constant
+        w = steady_rise_speed(buoyancy, drag, OMEGA)
+        radial = float(result.position[-1, :2] @ result.velocity[-1, :2]) / r
+        tangential = float(
+            (
+                result.position[-1, 0] * result.velocity[-1, 1]
+                - result.position[-1, 1] * result.velocity[-1, 0]
+            )
+            / r
+        )
+        assert -radial == pytest.approx(w, rel=0.015)
+        assert tangential == pytest.approx(2.0 * OMEGA * w / drag, rel=0.015)
+
+    def test_steady_rise_peaks_at_two_omega_drag(self) -> None:
+        b = 0.03
+        rates = [steady_rise_speed(b, k, OMEGA) for k in (0.05, 2 * OMEGA, 0.5)]
+        assert rates[1] == pytest.approx(b / (4.0 * OMEGA))
+        assert rates[1] > max(rates[0], rates[2])
+        assert steady_rise_speed(b, 0.0, OMEGA) == 0.0
+
+    def test_dragged_parcel_does_reach_cloud_base(self) -> None:
+        # k = 2 omega, +3 K: the rise settles to ~b/(4 omega) and arrives in hours
+        rh = 0.5
+        lcl = lifting_condensation_level(CYL, GAS, rh).height
+        assert lcl is not None
+        cfg = RunSettings(t_end=40000.0, sample_dt=20.0, max_step=5.0, stop_height=lcl)
+        result = run(
+            Release(temperature_excess=3.0, drag=2.0 * OMEGA),
+            settings=cfg,
+            relative_humidity=rh,
+        )
+        assert result.time_to_lcl is not None
+        assert 3000.0 < result.time_to_lcl < 12000.0
+
+    def test_drag_free_parcel_stays_trapped_for_hours(self) -> None:
+        cfg = RunSettings(t_end=4000.0, sample_dt=10.0, max_step=2.0)
+        result = run(Release(temperature_excess=3.0), settings=cfg)
+        assert result.max_rise < 20.0
+
+
 class TestOutputs:
     def test_stop_height(self) -> None:
         cfg = RunSettings(t_end=900.0, sample_dt=1.0, max_step=0.5, stop_height=20.0)
@@ -188,6 +241,15 @@ class TestOutputs:
         result = run(Release(velocity=LocalVector(0.0, 0.0, -2.0)), settings=FAST)
         assert result.ended_at_floor
         assert len(result.t) == 1
+
+    def test_floor_contact_between_samples_stops_at_the_crossing(self) -> None:
+        cfg = RunSettings(t_end=60.0, sample_dt=30.0, max_step=0.25)
+        result = run(
+            Release(height=5.0, velocity=LocalVector(0.0, 0.0, -2.0)), settings=cfg
+        )
+        assert result.ended_at_floor
+        assert 2.0 < result.t[-1] < 4.0
+        assert result.height[-1] == pytest.approx(0.0, abs=1e-3)
 
     def test_does_not_flag_floor_for_normal_run(self) -> None:
         assert not run(settings=FAST).ended_at_floor
