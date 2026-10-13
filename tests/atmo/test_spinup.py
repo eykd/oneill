@@ -14,6 +14,7 @@ from oneill.atmo.spinup import (
     SpinupParams,
     hull_spin_up,
     peak_wind_at_height,
+    rayleigh_discriminant,
     simulate,
     steady_lag,
     sudden_change,
@@ -325,6 +326,47 @@ class TestBudget:
         )
 
 
+class TestRayleighDiscriminant:
+    @pytest.mark.parametrize("c_over_omega", [0.0, 0.5, 2.0, -0.5, -0.9, -1.5])
+    @pytest.mark.parametrize("floor", [None, 0.0178])
+    def test_solid_body_is_exactly_minus_one(
+        self, c_over_omega: float, floor: float | None
+    ) -> None:
+        # u = c r keeps Gamma = r^2 (Omega + c) rising or falling outward with
+        # sign(Omega + c) only through the normalisation: q = -1 for every c
+        params = SpinupParams(1.0, nu_unstable=10.0, n_cells=60, floor_drag=floor)
+        grid_r = (
+            SMALL.radius
+            * np.tanh(params.stretch * (np.arange(61)) / 60)
+            / math.tanh(params.stretch)
+        )
+        centres = 0.5 * (grid_r[:-1] + grid_r[1:])
+        u = c_over_omega * SMALL.omega * centres
+        q = rayleigh_discriminant(SMALL, params, u, SMALL.omega)
+        assert q[0] == 0.0  # axis face
+        assert q[1:-1] == pytest.approx(-1.0, abs=1e-2)  # O(h^2) face-position error
+
+    def test_no_slip_wall_face_of_a_solid_body_layer(self) -> None:
+        # u = 0 against the wall with u = c r just inside: shear u' = -c r/(dr)
+        params = noslip(1.0, nu_unstable=10.0, n_cells=40, stretch=0.0)
+        q = rayleigh_discriminant(SMALL, params, np.zeros(40), SMALL.omega)
+        assert q[-1] == pytest.approx(-1.0, abs=1e-5)  # no wind, no shear
+
+    def test_steep_outward_decrease_is_unstable(self) -> None:
+        # u falling steeply outward (spin-down boundary layer) makes Gamma fall
+        params = SpinupParams(1.0, nu_unstable=10.0, n_cells=40, stretch=0.0)
+        centres = (np.arange(40) + 0.5) * SMALL.radius / 40
+        u = (
+            0.5
+            * SMALL.omega
+            * centres
+            * np.exp(-(((SMALL.radius - centres) / 3.0) ** -1))
+        )
+        u[-4:] = np.array([4.0, 3.0, 1.5, 0.0])
+        q = rayleigh_discriminant(SMALL, params, u, SMALL.omega * 0.5)
+        assert np.any(q > 0.0)
+
+
 class TestRegimes:
     """Rayleigh-switched viscosity: converged, smooth, and only mildly asymmetric."""
 
@@ -346,16 +388,17 @@ class TestRegimes:
         assert strong[0] == pytest.approx(strong[1], rel=0.02)
 
     def test_no_odd_even_oscillation_near_the_wall(self) -> None:
-        # a hard regime switch with Crank-Nicolson rang at +-12 m/s with ~50 slope
-        # sign changes; the profile of a strong spin-down must be smooth
+        # a hard regime switch with Crank-Nicolson rang at +-12 m/s on a 1.8 m/s
+        # wind; the total variation of every profile beyond its one hump must stay
+        # small (a residual grid-scale stair of ~1 % of the peak is known)
         params = noslip(1.0, nu_unstable=10.0, endcap=False, n_cells=100)
         run = sudden_change(SMALL, params, -0.5 * SMALL.omega, dt_max=20.0, t_max=5e4)
-        worst = 0
-        for row in run.u[::5]:
-            slope = np.diff(row)
-            signs = np.sign(slope[np.abs(slope) > 1e-9 * np.abs(row).max()])
-            worst = max(worst, int(np.count_nonzero(np.diff(signs))))
-        assert worst <= 4
+        for row in run.u[1:]:
+            k = int(np.argmax(np.abs(row)))
+            peak = abs(row[k])
+            tv = np.abs(np.diff(row)).sum()
+            hump = abs(row[k] - row[0]) + abs(row[k] - row[-1])
+            assert (tv - hump) / peak < 0.03
         assert np.max(np.abs(run.u)) <= 0.5 * SMALL.omega * SMALL.radius * (1 + 1e-6)
 
     def test_small_changes_are_nearly_symmetric(self) -> None:
@@ -457,13 +500,26 @@ class TestHullSpinUp:
         slippery = hull_spin_up(CYL, SpinupParams(1.0, floor_drag=0.0), alpha)
         assert peak_wind_at_height(draggy, 10.0) < peak_wind_at_height(slippery, 10.0)
 
-    def test_rossby_number_flags_the_linear_sink(self) -> None:
+    def test_epsilon_flags_the_linear_sink(self) -> None:
         fast = hull_spin_up(CYL, SpinupParams(1.0), CYL.omega / 3600.0)
-        slow = hull_spin_up(CYL, SpinupParams(10.0), CYL.omega / 86400.0)
-        assert fast.max_rossby == pytest.approx(0.55, abs=0.05)
+        slow = hull_spin_up(
+            CYL, SpinupParams(10.0), CYL.omega / (10 * 86400.0), dt_max=3600.0
+        )
+        assert fast.max_epsilon > 1.0
         assert not fast.sink_valid
-        assert slow.max_rossby < 0.3
+        assert slow.max_epsilon == pytest.approx(0.045, abs=0.01)
         assert slow.sink_valid
+
+    @pytest.mark.parametrize(
+        ("delta", "epsilon"), [(-0.5, 1.0), (-0.1, 0.11), (0.1, 0.09)]
+    )
+    def test_epsilon_of_a_sudden_change_is_the_relative_step(
+        self, delta: float, epsilon: float
+    ) -> None:
+        run = sudden_change(
+            CYL, SpinupParams(1.0, n_cells=40), delta * CYL.omega, t_max=100.0
+        )
+        assert run.max_epsilon == pytest.approx(epsilon, abs=0.01)
 
     def test_corotation_time_never_precedes_the_end_of_the_ramp(self) -> None:
         run = hull_spin_up(CYL, SpinupParams(1.0), CYL.omega / 3600.0)

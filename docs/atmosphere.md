@@ -88,33 +88,33 @@ Warm parcel released at the floor in dry-adiabatic air (O'Neill air, 290 K). Sho
 <!-- gen:spinup -->
 Floor condition for every row: canopy drag, C_D = 0.0178 (suburb, z0 = 0.5 m). Hull spun from rest to full rate; the air starts at rest.
 
-| Hull ramp | nu_t (m2/s) | End caps | time to 90 % co-rotation | peak wind at 10 m (m/s) | peak wind anywhere (m/s) | peak Ro | linear cap sink valid |
+| Hull ramp | nu_t (m2/s) | End caps | time to 90 % co-rotation | peak wind at 10 m (m/s) | peak wind anywhere (m/s) | peak epsilon | linear cap sink valid |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 60 min | 1 | on | 23.0 h | 18.3 | 159.3 | 0.57 | no (order of magnitude) |
-| 60 min | 1 | off | 14 d | 18.6 | 165.2 | 0.59 | n/a (no end caps) |
-| 60 min | 10 | on | 6.8 h | 23.1 | 131.5 | 0.46 | no (order of magnitude) |
-| 60 min | 10 | off | 38.0 h | 24.1 | 147.2 | 0.52 | n/a (no end caps) |
-| 24.0 h | 1 | on | 37.7 h | 5.3 | 66.3 | 0.25 | yes |
-| 24.0 h | 1 | off | 15 d | 6.8 | 133.6 | 0.51 | n/a (no end caps) |
-| 24.0 h | 10 | on | 24.3 h | 6.2 | 24.5 | 0.11 | yes |
-| 24.0 h | 10 | off | 2 d | 8.9 | 74.5 | 0.46 | n/a (no end caps) |
+| 60 min | 1 | on | 23.0 h | 18.3 | 159.3 | 1.26 | no (order of magnitude) |
+| 60 min | 1 | off | 14 d | 18.6 | 165.2 | 1.28 | n/a (no end caps) |
+| 60 min | 10 | on | 6.8 h | 23.1 | 131.5 | 1.02 | no (order of magnitude) |
+| 60 min | 10 | off | 38.0 h | 24.1 | 147.2 | 1.06 | n/a (no end caps) |
+| 24.0 h | 1 | on | 37.7 h | 5.3 | 66.3 | 0.78 | no (order of magnitude) |
+| 24.0 h | 1 | off | 15 d | 6.8 | 133.6 | 1.03 | n/a (no end caps) |
+| 24.0 h | 10 | on | 24.3 h | 6.2 | 24.5 | 0.44 | no (order of magnitude) |
+| 24.0 h | 10 | off | 2 d | 8.9 | 74.5 | 1.00 | n/a (no end caps) |
 
 Sudden change of the hull spin rate, with a Rayleigh-switched viscosity (larger where angular momentum falls outward). With end caps the sink rate scales with the new hull rate, so spin-down is the slower of the pair.
 
-| Hull spin change | nu_t stable / unstable | End caps | time to 90 % adjustment |
-| --- | --- | --- | --- |
-| -10% | 1 / 10 | on | 23.8 h |
-| +10% | 1 / 10 | on | 22.0 h |
-| -10% | 1 / 10 | off | 15 d |
-| +10% | 1 / 10 | off | 15 d |
+| Hull spin change | nu_t stable / unstable | End caps | time to 90 % adjustment | epsilon | linear cap sink valid |
+| --- | --- | --- | --- | --- | --- |
+| -10% | 1 / 10 | on | 23.8 h | 0.11 | yes |
+| +10% | 1 / 10 | on | 22.0 h | 0.09 | yes |
+| -10% | 1 / 10 | off | 15 d | 0.11 | n/a (no end caps) |
+| +10% | 1 / 10 | off | 15 d | 0.09 | n/a (no end caps) |
 
-Sensitivity of the time to 90 % adjustment (nu_t 1 / 10, end caps on) to the blend width of the viscosity closure: small for 10 % changes, larger for 50 %.
+Sensitivity of the time to 90 % adjustment (nu_t 1 / 10, end caps on) to the blend width of the viscosity closure, as a band over the widths tried (computed at a 150 s time step). The 50 % step has epsilon = 1, so its time is order-of-magnitude only.
 
-| Hull spin change (end caps on) | blend width 0.15 | blend width 0.3 | blend width 0.6 |
+| Hull spin change (end caps on) | time to 90 % adjustment, band over blend width 0.15-0.6 | epsilon | linear cap sink valid |
 | --- | --- | --- | --- |
-| -10% | 24.0 h | 23.8 h | 22.8 h |
-| +10% | 22.0 h | 22.0 h | 21.5 h |
-| -50% | 28.1 h | 27.5 h | 25.4 h |
+| -10% | 22.9-23.8 h | 0.11 | yes |
+| +10% | 21.5-21.9 h | 0.09 | yes |
+| -50% | 24.9-27.4 h | 1.00 | no (order of magnitude) |
 
 Steady lag wind while the hull changes speed by 1 % per day (spin-up: the air lags, so the wind is negative).
 
@@ -125,12 +125,12 @@ Steady lag wind while the hull changes speed by 1 % per day (spin-up: the air la
 | 10 | on | 0.23 | -0.233 |
 | 10 | off | 1.61 | -0.963 |
 
-Molecular viscosity only.
+Molecular viscosity only. Illustrative: the laminar end-cap sink is invalid at these Ekman Reynolds numbers (turbulent layers), and the 1 h ramp also exceeds epsilon = 0.3.
 
-| Gas at floor | molecular nu (m2/s) | time to 90 % co-rotation (1 h ramp) | peak wind at 10 m (m/s) |
-| --- | --- | --- | --- |
-| O'Neill 1974 at 290.0 K | 1.47e-5 | 292 d | 10.7 |
-| SP-413 at 290.0 K | 2.97e-5 | 205 d | 10.8 |
+| Gas at floor | molecular nu (m2/s) | time to 90 % co-rotation (1 h ramp) | peak wind at 10 m (m/s) | Ekman Reynolds number |
+| --- | --- | --- | --- | --- |
+| O'Neill 1974 at 290.0 K | 1.47e-5 | 292 d | 10.7 | 11,921 |
+| SP-413 at 290.0 K | 2.97e-5 | 205 d | 10.8 | 8,401 |
 
-*One-dimensional axisymmetric model with constant eddy viscosities and a canopy-drag floor (C_D from the suburban log law at 10 m); winds are quoted at that 10 m reference height, the one the drag law is written for. The end-cap sink is the linear Greenspan-Howard result, valid for Rossby number <= 0.3; rows with a larger peak Rossby number (fast ramps) are order-of-magnitude only, and turbulent end caps are not linear. Strong (50 %) spin changes also depend on the blend width of the viscosity closure; changes of 10 % or less do not.*
+*One-dimensional axisymmetric model with constant eddy viscosities and a canopy-drag floor (C_D from the suburban log law at 10 m); winds are quoted at that 10 m reference height, the one the drag law is written for. The end-cap sink is the linear Greenspan-Howard result, valid for epsilon = |u| / (Omega r) <= 0.3; rows with a larger peak epsilon (fast ramps, the 50 % step) are order-of-magnitude only, and turbulent end caps are not linear. Adjustment times depend on the blend width of the viscosity closure; the sensitivity band is shown, and 50 % times drift about 3 % with the production time step.*
 <!-- /gen -->

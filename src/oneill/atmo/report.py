@@ -8,6 +8,7 @@ condition), and :attr:`AtmosphereReport.caveats` holds the standing caveats of
 each section.
 """
 
+import math
 from dataclasses import dataclass
 from functools import cache
 
@@ -34,6 +35,7 @@ from oneill.atmo.parcel import (
 from oneill.atmo.spinup import (
     DEFAULT_FLOOR_DRAG,
     DRAG_HEIGHT,
+    LINEAR_SINK_EPSILON,
     SpinupParams,
     hull_spin_up,
     peak_wind_at_height,
@@ -77,6 +79,8 @@ RAMPS = (3600.0, 86400.0)
 EDDY_VISCOSITIES = (1.0, 10.0)
 FLOOR_LABEL = f"canopy drag, C_D = {DEFAULT_FLOOR_DRAG:.4f} (suburb, z0 = 0.5 m)"
 BLEND_WIDTHS = (0.15, 0.3, 0.6)
+BLEND_DT_MAX = 150.0
+"""Time step for the blend rows (50 % times drift ~3 % at the default 600 s)."""
 """Closure blend widths tried in the sensitivity rows."""
 STEP = 0.1
 """Fractional hull spin change used in the sudden-change rows."""
@@ -117,11 +121,12 @@ CAVEATS = {
         "One-dimensional axisymmetric model with constant eddy viscosities and a "
         "canopy-drag floor (C_D from the suburban log law at 10 m); winds are quoted "
         "at that 10 m reference height, the one the drag law is written for. The "
-        "end-cap sink is the linear Greenspan-Howard result, valid for Rossby number "
-        "<= 0.3; rows with a larger peak Rossby number (fast ramps) are "
-        "order-of-magnitude only, and turbulent end caps are not linear. Strong "
-        "(50 %) spin changes also depend on the blend width of the viscosity "
-        "closure; changes of 10 % or less do not."
+        "end-cap sink is the linear Greenspan-Howard result, valid for "
+        "epsilon = |u| / (Omega r) <= 0.3; rows with a larger peak epsilon (fast "
+        "ramps, the 50 % step) are order-of-magnitude only, and turbulent end caps "
+        "are not linear. Adjustment times depend on the blend width of the "
+        "viscosity closure; the sensitivity band is shown, and 50 % times drift "
+        "about 3 % with the production time step."
     ),
 }
 
@@ -237,7 +242,7 @@ class SpinRow:
     time_to_90: float | None
     peak_wind_ref: float
     peak_wind_interior: float
-    max_rossby: float
+    max_epsilon: float
     sink_valid: bool
 
 
@@ -250,6 +255,8 @@ class SuddenRow:
     nu_unstable: float
     endcap: bool
     time_to_adjust: float | None
+    max_epsilon: float
+    sink_valid: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +266,8 @@ class BlendRow:
     delta_fraction: float
     widths: tuple[float, ...]
     times: tuple[float | None, ...]
+    max_epsilon: float
+    sink_valid: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,12 +283,18 @@ class LagRow:
 
 @dataclass(frozen=True, slots=True)
 class MolecularRow:
-    """Spin-up with molecular viscosity only (end caps on, no-slip floor)."""
+    """Spin-up with molecular viscosity only (end caps on, canopy-drag floor).
+
+    Illustrative only: the laminar end-cap sink is invalid at the Ekman-layer
+    Reynolds number ``Re = U / sqrt(nu Omega)`` (in the thousands), where the
+    layers are turbulent, and the 1 h ramp also exceeds ``epsilon = 0.3``.
+    """
 
     label: str
     nu: float
     time_to_90: float | None
     peak_wind_ref: float
+    ekman_reynolds: float
 
 
 @dataclass(frozen=True, eq=False)
@@ -463,7 +478,7 @@ def _spin_rows(
                         time_to_90=time_to_corotation(run),
                         peak_wind_ref=peak_wind_at_height(run, DRAG_HEIGHT),
                         peak_wind_interior=float(np.abs(run.u).max()),
-                        max_rossby=run.max_rossby,
+                        max_epsilon=run.max_epsilon,
                         sink_valid=run.sink_valid,
                     )
                 )
@@ -486,19 +501,35 @@ def _sudden_rows(cyl: Cylinder) -> tuple[SuddenRow, ...]:
         for sign in (-1.0, 1.0):
             params = SpinupParams(1.0, nu_unstable=10.0, endcap=endcap, n_cells=100)
             run = sudden_change(cyl, params, sign * STEP * cyl.omega, t_max=3.0e7)
-            rows.append(SuddenRow(sign * STEP, 1.0, 10.0, endcap, time_to_adjust(run)))
+            rows.append(
+                SuddenRow(
+                    sign * STEP,
+                    1.0,
+                    10.0,
+                    endcap,
+                    time_to_adjust(run),
+                    run.max_epsilon,
+                    run.sink_valid,
+                )
+            )
     return tuple(rows)
 
 
 def _blend_rows(cyl: Cylinder) -> tuple[BlendRow, ...]:
     rows = []
     for delta in (-STEP, STEP, -0.5):
-        times = []
+        times, epsilons = [], []
         for width in BLEND_WIDTHS:
             params = SpinupParams(1.0, nu_unstable=10.0, n_cells=100, blend_width=width)
-            run = sudden_change(cyl, params, delta * cyl.omega, t_max=3.0e7)
+            run = sudden_change(
+                cyl, params, delta * cyl.omega, t_max=3.0e7, dt_max=BLEND_DT_MAX
+            )
             times.append(time_to_adjust(run))
-        rows.append(BlendRow(delta, BLEND_WIDTHS, tuple(times)))
+            epsilons.append(run.max_epsilon)
+        eps = max(epsilons)
+        rows.append(
+            BlendRow(delta, BLEND_WIDTHS, tuple(times), eps, eps <= LINEAR_SINK_EPSILON)
+        )
     return tuple(rows)
 
 
@@ -536,6 +567,7 @@ def _molecular_rows(cyl: Cylinder, gases: tuple[Gas, ...]) -> tuple[MolecularRow
                 g.nu,
                 time_to_corotation(run),
                 peak_wind_at_height(run, DRAG_HEIGHT),
+                peak_wind_at_height(run, DRAG_HEIGHT) / math.sqrt(g.nu * cyl.omega),
             )
         )
     return tuple(rows)

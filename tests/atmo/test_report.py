@@ -111,12 +111,8 @@ def test_spin_rows_state_the_floor_condition_and_validity(
     assert row.time_to_90 is not None
     assert row.time_to_90 / 3600.0 == pytest.approx(23.0, abs=0.5)
     assert row.peak_wind_ref == pytest.approx(18.3, abs=1.0)
-    assert row.max_rossby > 0.3
+    assert row.max_epsilon > 0.3
     assert not row.sink_valid
-    gentle = next(
-        r for r in report.spin if (r.ramp, r.nu, r.endcap) == (86400.0, 10.0, True)
-    )
-    assert gentle.sink_valid
 
 
 def test_sudden_changes_are_nearly_symmetric_and_spin_down_is_slower(
@@ -128,6 +124,8 @@ def test_sudden_changes_are_nearly_symmetric_and_spin_down_is_slower(
     assert up.time_to_adjust is not None
     # with end caps tau_E ~ 1 / sqrt(new rate): spin-down (0.9) is the slower
     assert down.time_to_adjust / up.time_to_adjust == pytest.approx(1.08, abs=0.04)
+    assert down.max_epsilon == pytest.approx(0.11, abs=0.01)
+    assert down.sink_valid
 
 
 def test_blend_width_sensitivity_is_reported(report: AtmosphereReport) -> None:
@@ -136,6 +134,9 @@ def test_blend_width_sensitivity_is_reported(report: AtmosphereReport) -> None:
         assert row.widths == (0.15, 0.3, 0.6)
         assert all(t is not None for t in row.times)
     mild, strong = report.blend[0], report.blend[2]
+    assert strong.max_epsilon == pytest.approx(1.0, abs=0.02)
+    assert not strong.sink_valid
+    assert mild.sink_valid
     assert mild.times[0] is not None
     assert mild.times[2] is not None
     assert strong.times[0] is not None
@@ -143,6 +144,13 @@ def test_blend_width_sensitivity_is_reported(report: AtmosphereReport) -> None:
     assert abs(strong.times[2] / strong.times[0] - 1.0) > abs(
         mild.times[2] / mild.times[0] - 1.0
     )
+
+
+def test_molecular_rows_carry_the_ekman_reynolds_number(
+    report: AtmosphereReport,
+) -> None:
+    for row in report.molecular:
+        assert row.ekman_reynolds > 1000.0
 
 
 def test_reference_run_data(report: AtmosphereReport) -> None:

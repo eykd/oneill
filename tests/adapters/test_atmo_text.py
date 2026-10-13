@@ -5,6 +5,7 @@ import pytest
 
 from oneill.adapters.atmo_text import (
     BLOCK_NAMES,
+    _band,
     render_blocks,
     render_equilibrium,
     render_parcel,
@@ -67,7 +68,21 @@ class TestRendering:
         assert "23.0 h" in text
         assert " d |" in text
         assert "n/a (no end caps)" in text
-        assert "blend width 0.15" in text
+        assert "band over blend width 0.15-0.6" in text
+        assert "Ekman Reynolds" in text
+
+
+class TestBand:
+    def test_range_in_one_unit(self) -> None:
+        assert _band([22.8 * 3600.0, 24.0 * 3600.0, 23.7 * 3600.0]) == "22.8-24.0 h"
+
+    def test_mixed_units(self) -> None:
+        assert _band([30.0 * 3600.0, 3.0 * 86400.0 * 1.2]) == "30.0 h - 4 d"
+
+    def test_identical_values_and_missing_values(self) -> None:
+        assert _band([3600.0 * 5, 3600.0 * 5.01]) == "5.0 h"
+        assert _band([None, 7200.0 * 6, None]) == "12.0 h"
+        assert _band([None, None]) == "not reached"
 
 
 class TestReplaceBlocks:

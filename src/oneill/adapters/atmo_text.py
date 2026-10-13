@@ -314,6 +314,20 @@ def render_parcel(report: AtmosphereReport) -> str:
     return f"{caption}\n\n{table}\n\n{_caveat(report, 'parcel')}"
 
 
+def _band(times: Sequence[float | None]) -> str:
+    """Range of durations over a closure sweep, e.g. ``22.8-24.0 h``."""
+    values = [t for t in times if t is not None]
+    if not values:
+        return "not reached"
+    lo, hi = _duration(min(values)), _duration(max(values))
+    if lo == hi:
+        return lo
+    unit = lo.split(" ")[-1]
+    if hi.endswith(unit):
+        return f"{lo.rsplit(' ', 1)[0]}-{hi}"
+    return f"{lo} - {hi}"
+
+
 def _validity(endcap: bool, valid: bool) -> str:  # noqa: FBT001
     if not endcap:
         return "n/a (no end caps)"
@@ -331,7 +345,7 @@ def render_spinup(report: AtmosphereReport) -> str:
             "time to 90 % co-rotation",
             f"peak wind at {DRAG_HEIGHT:g} m (m/s)",
             "peak wind anywhere (m/s)",
-            "peak Ro",
+            "peak epsilon",
             "linear cap sink valid",
         ],
         [
@@ -342,7 +356,7 @@ def render_spinup(report: AtmosphereReport) -> str:
                 _duration(r.time_to_90),
                 _num(r.peak_wind_ref, 1),
                 _num(r.peak_wind_interior, 1),
-                _num(r.max_rossby, 2),
+                _num(r.max_epsilon, 2),
                 _validity(r.endcap, r.sink_valid),
             ]
             for r in report.spin
@@ -354,6 +368,8 @@ def render_spinup(report: AtmosphereReport) -> str:
             "nu_t stable / unstable",
             "End caps",
             "time to 90 % adjustment",
+            "epsilon",
+            "linear cap sink valid",
         ],
         [
             [
@@ -361,15 +377,30 @@ def render_spinup(report: AtmosphereReport) -> str:
                 f"{s.nu_stable:g} / {s.nu_unstable:g}",
                 "on" if s.endcap else "off",
                 _duration(s.time_to_adjust),
+                _num(s.max_epsilon, 2),
+                _validity(s.endcap, s.sink_valid),
             ]
             for s in report.sudden
         ],
     )
     widths = report.blend[0].widths
     blend = _table(
-        ["Hull spin change (end caps on)", *[f"blend width {w:g}" for w in widths]],
         [
-            [f"{b.delta_fraction:+.0%}", *[_duration(t) for t in b.times]]
+            "Hull spin change (end caps on)",
+            (
+                "time to 90 % adjustment, band over blend width "
+                f"{widths[0]:g}-{widths[-1]:g}"
+            ),
+            "epsilon",
+            "linear cap sink valid",
+        ],
+        [
+            [
+                f"{b.delta_fraction:+.0%}",
+                _band(b.times),
+                _num(b.max_epsilon, 2),
+                "yes" if b.sink_valid else "no (order of magnitude)",
+            ]
             for b in report.blend
         ],
     )
@@ -396,9 +427,16 @@ def render_spinup(report: AtmosphereReport) -> str:
             "molecular nu (m2/s)",
             "time to 90 % co-rotation (1 h ramp)",
             f"peak wind at {DRAG_HEIGHT:g} m (m/s)",
+            "Ekman Reynolds number",
         ],
         [
-            [m.label, _sci(m.nu), _duration(m.time_to_90), _num(m.peak_wind_ref, 1)]
+            [
+                m.label,
+                _sci(m.nu),
+                _duration(m.time_to_90),
+                _num(m.peak_wind_ref, 1),
+                f"{m.ekman_reynolds:,.0f}",
+            ]
             for m in report.molecular
         ],
     )
@@ -417,8 +455,9 @@ def render_spinup(report: AtmosphereReport) -> str:
         sudden,
         (
             "Sensitivity of the time to 90 % adjustment (nu_t 1 / 10, end caps on) "
-            "to the blend width of the viscosity closure: small for 10 % changes, "
-            "larger for 50 %."
+            "to the blend width of the viscosity closure, as a band over the "
+            "widths tried (computed at a 150 s time step). The 50 % step has "
+            "epsilon = 1, so its time is order-of-magnitude only."
         ),
         blend,
         (
@@ -426,7 +465,11 @@ def render_spinup(report: AtmosphereReport) -> str:
             "(spin-up: the air lags, so the wind is negative)."
         ),
         lag,
-        "Molecular viscosity only.",
+        (
+            "Molecular viscosity only. Illustrative: the laminar end-cap sink is "
+            "invalid at these Ekman Reynolds numbers (turbulent layers), and the "
+            "1 h ramp also exceeds epsilon = 0.3."
+        ),
         molecular,
         _caveat(report, "spinup"),
     ]

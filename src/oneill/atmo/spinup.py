@@ -25,21 +25,24 @@ that no real surface has. ``floor_drag=0`` is free slip.
 **Viscosity regimes** (Q4). Eddy viscosity is the larger ``nu_unstable`` where the
 absolute angular momentum ``Gamma = r (Omega r + u)`` falls outward and the smaller
 ``nu_stable`` elsewhere, blended smoothly with the Rayleigh discriminant
-``q = -(2 Omega_in + du/dr) / (2 |Omega_in|)`` (``Omega_in = Omega + u/r`` is the
-air's inertial rotation rate; ``q = -1`` for any solid-body state, ``q > 0`` is
-unstable) through ``(1 + tanh(q / 0.3)) / 2``. A hard switch on the previous
+``q = -(2 Omega + u/r + du/dr) / (2 |Omega_in|)`` (``Omega_in = Omega + u/r`` is
+the air's inertial rotation rate; ``q = -1`` for any solid-body state, ``q > 0``
+is unstable) through ``(1 + tanh(q / 0.3)) / 2``. A hard switch on the previous
 step's wind, with Crank-Nicolson, made the scheme ring at the sharp unstable layer
 (odd-even errors of order 10 m/s). The blend, Picard iteration of the viscosity
-within each step and an L-stable time scheme remove that; a small residual
-2-cell stair (about 1 % of the peak wind) remains where the shear sits at the
-marginal-stability threshold, as it does in rotating-channel DNS. Strong
-(order 50 %) spin changes depend on the blend width (a closure choice); changes of
-10 % or less do not.
+within each step and an L-stable time scheme remove that; a small grid-scale
+stair remains where the shear sits at the marginal-stability threshold. It is a
+discretisation artifact of that marginal layer: its total-variation excess is at
+most 1.1 % of the peak wind for 60-200 cells (it does not shrink with the cell
+count, so I have not shown it converges). The adjustment times change by 0.1 %
+(10 % steps) and 1.5 % (50 % step) between 60 and 200 cells, and depend on the
+blend width (a closure choice): see the sensitivity band in the report.
 
 **Validity.** The end-cap sink is the *linear* Greenspan-Howard result, valid for
-Rossby number ``Ro = |u| / (2 Omega r) <~ 0.3``. :attr:`SpinupResult.max_rossby`
-reports the largest ``Ro`` reached; fast spin changes exceed it (and turbulent
-end caps are not linear), so those results are order-of-magnitude only.
+``epsilon = |u| / (Omega r) <~ 0.3`` (the relative wind small against the
+rotation). :attr:`SpinupResult.max_epsilon` reports the largest value reached;
+fast spin changes exceed it (a 50 % step has ``epsilon = 1``), and turbulent end
+caps are not linear anyway, so those results are order-of-magnitude only.
 
 The scheme is a finite-volume theta method (default backward Euler, which is
 L-stable; ``theta=0.5`` Crank-Nicolson with two backward-Euler starting steps is
@@ -75,15 +78,15 @@ DEFAULT_FLOOR_DRAG = drag_coefficient(DRAG_HEIGHT, SUBURBAN.z0)
 BLEND_WIDTH = 0.3
 """Default width of the viscosity-regime blend (normalised discriminant units)."""
 
-LINEAR_SINK_ROSSBY = 0.3
-"""Largest Rossby number for which the linear end-cap sink is trusted."""
+LINEAR_SINK_EPSILON = 0.3
+"""Largest ``|u| / (Omega r)`` for which the linear end-cap sink is trusted."""
 
 _MAX_STEPS = 200_000
 _LAG_ITERATIONS = 80
 _PICARD_ITERATIONS = 3
 _STARTUP_STEPS = 2
 _MIN_CELLS = 8
-_BLEND_FLOOR = 0.2
+_BLEND_FLOOR = 1e-6
 _TINY = 1e-12
 
 
@@ -248,15 +251,22 @@ class SpinupResult:
         return np.asarray(self.u @ self.moment)
 
     @property
-    def max_rossby(self) -> float:
-        """Largest ``|u| / (2 Omega r)`` reached, with ``Omega`` the final hull rate."""
-        omega = float(self.omega.max())
-        return float(np.max(np.abs(self.u) / (2.0 * omega * self.radius)))
+    def max_epsilon(self) -> float:
+        """Largest ``|u| / (Omega r)`` while the hull spins at >= half its top rate.
+
+        This is the Greenspan-Howard linearity parameter ``epsilon`` evaluated
+        with the instantaneous hull rate. Earlier times, when the hull has barely
+        started, are excluded: the air is then trivially at rest in the inertial
+        frame (``epsilon`` near 1) with negligible energy.
+        """
+        mask = self.omega >= 0.5 * float(self.omega.max())
+        ratio = np.abs(self.u[mask]) / (self.omega[mask, None] * self.radius)
+        return float(np.max(ratio))
 
     @property
     def sink_valid(self) -> bool:
-        """``True`` if the linear end-cap sink is trusted (Ro <= 0.3 throughout)."""
-        return self.max_rossby <= LINEAR_SINK_ROSSBY
+        """``True`` if the linear end-cap sink is trusted (epsilon <= 0.3)."""
+        return self.max_epsilon <= LINEAR_SINK_EPSILON
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,30 +422,42 @@ class _Model:
         omega = abs(self.hull.omega(t))
         return math.sqrt(self.params.nu_cap * omega) / self.half_length
 
+    def discriminant(self, u: NDArray[np.float64], omega: float) -> NDArray[np.float64]:
+        """Normalised Rayleigh discriminant ``q`` on the faces (0 at the axis face).
+
+        ``dGamma/dr = r (2 Omega + u/r + du/dr)`` for ``Gamma = r (Omega r + u)``;
+        ``q`` is minus that over ``2 r (Omega + u/r)``, i.e. ``-(dGamma/dr) /
+        (2 Gamma / r)``, so ``q = -1`` for any solid-body ``u = c r`` and
+        ``q > 0`` where ``Gamma^2`` falls outward (Rayleigh), also for
+        counter-rotating air (``Gamma < 0``).
+        """
+        g = self.grid
+        q = np.zeros(len(g.faces))
+        du = np.diff(u) / np.diff(g.centres)
+        u_face = 0.5 * (u[1:] + u[:-1])
+        r_face = g.faces[1:-1]
+        spin_in = omega + u_face / r_face  # inertial rotation rate of the air
+        denom = 2.0 * spin_in
+        floor = _BLEND_FLOOR * abs(omega) + _TINY
+        denom = np.where(np.abs(denom) < floor, floor, denom)
+        q[1:-1] = -(2.0 * omega + u_face / r_face + du) / denom
+        if self.params.floor_drag is None:  # no-slip wall: u = 0 at r = R
+            q[-1] = -(2.0 * omega - u[-1] / (g.faces[-1] - g.centres[-1])) / (
+                2.0 * omega + _BLEND_FLOOR * abs(omega) + _TINY
+            )
+        return q
+
     def viscosity_faces(
         self, u: NDArray[np.float64], omega: float
     ) -> NDArray[np.float64]:
         """Face viscosities blended smoothly by the Rayleigh discriminant.
 
-        ``q = -(2 Omega + u/r + du/dr)`` is positive where ``Gamma = r (Omega r + u)``
-        falls outward; the weight of ``nu_unstable`` is ``(1 + tanh(q / q0)) / 2``.
+        The weight of ``nu_unstable`` is ``(1 + tanh(q / width)) / 2``.
         """
-        g = self.grid
         p = self.params
         if p.nu_high == p.nu_stable:
-            return np.full(len(g.faces), p.nu_stable)
-        q = np.zeros(len(g.faces))
-        du = np.diff(u) / np.diff(g.centres)
-        u_face = 0.5 * (u[1:] + u[:-1])
-        spin_in = omega + u_face / g.faces[1:-1]  # inertial rotation rate of the air
-        q[1:-1] = -(2.0 * spin_in + du) / (
-            2.0 * abs(spin_in) + _BLEND_FLOOR * abs(omega)
-        )
-        if p.floor_drag is None:  # no-slip wall: u = 0 at r = R
-            q[-1] = -(2.0 * omega - u[-1] / (g.faces[-1] - g.centres[-1])) / (
-                2.0 * abs(omega) + _BLEND_FLOOR * abs(omega) + _TINY
-            )
-        weight = 0.5 * (1.0 + np.tanh(q / p.blend_width))
+            return np.full(len(self.grid.faces), p.nu_stable)
+        weight = 0.5 * (1.0 + np.tanh(self.discriminant(u, omega) / p.blend_width))
         return p.nu_stable + (p.nu_high - p.nu_stable) * weight
 
     def operator(self, nu: NDArray[np.float64], u: NDArray[np.float64]) -> _Operator:
@@ -464,6 +486,20 @@ class _Model:
         lower[0] = 0.0
         upper[-1] = 0.0
         return _Operator(lower, diag, upper, wall)
+
+
+def rayleigh_discriminant(
+    cyl: Cylinder, params: SpinupParams, u: NDArray[np.float64], omega: float
+) -> NDArray[np.float64]:
+    """Normalised Rayleigh discriminant ``q`` at the cell faces for the wind ``u``.
+
+    ``q = -(2 Omega + u/r + du/dr) / (2 |Omega + u/r|)``: ``-1`` for solid-body
+    flow (``u = c r``), positive where ``Gamma = r (Omega r + u)`` falls outward.
+    """
+    grid = _grid(cyl.radius, params.n_cells, params.stretch)
+    return _Model(grid, params, cyl.length / 2.0, HullSpin(omega)).discriminant(
+        np.asarray(u, dtype=np.float64), omega
+    )
 
 
 def _thomas(
