@@ -196,6 +196,7 @@ Gravity is centrifugal, so warm air is pushed toward the axis, and uneven heatin
 | Case | days | nu_t | Coriolis-buoyancy | r_in / R | n_theta | rms wind 10 m (m/s) | mean wind 10 m (m/s) | spatial peak 10 m wind, mean\|u\|+3 sigma over theta (m/s) | peak m | m=3 fraction | m<=2 fraction | energy centroid length (km) | day/night KE ratio | wall time |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | day/night, heat out through windows | 10 | 1 | on | 0.1 | 256 | 1.06 | +0.01 | 4.05 | 3 | 0.19 | 0.17 | 1.40 | 42x | 2.8 h |
+| day/night, windows always cool | 10 | 1 | on | 0.1 | 256 | 0.94 | -0.02 | 3.55 | 3 | 0.19 | 0.31 | 1.82 | 31x | 94 min |
 | constant heating, no night | 10 | 1 | on | 0.1 | 256 | 1.37 | +0.01 | 5.26 | 3 | 0.18 | 0.11 | 1.12 | 2x | 3.3 h |
 | warm-air Coriolis term off | 10 | 1 | off | 0.1 | 256 | 1.05 | -0.01 | 4.05 | 3 | 0.19 | 0.20 | 1.49 | 39x | 2.7 h |
 | 10x eddy viscosity | 10 | 10 | on | 0.1 | 256 | 1.03 | +0.01 | 3.96 | 3 | 0.35 | 0.19 | 1.92 | 36x | 2.2 h |
