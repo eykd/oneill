@@ -118,26 +118,33 @@ class TestAnnulusBlock:
 
     def test_table_of_cases(self) -> None:
         extra = {**SUMMARY, "name": "custom", "description": "extra"}
-        del extra["wall_seconds"]
         del extra["energy_series"]
         text = render_annulus(
             {"cases": {"primary": SUMMARY, "custom": extra}}, "caveat text"
         )
         assert (
-            "| day/night, heat out through windows | 3 | 1 | on | 0.1 | 256 | 2.35 |"
-            " -0.51 | 7.10 | 4 |" in text
+            "| day/night, windows balance land instantly | 3 | 1 | on | 0.1 | 256 |"
+            " 2.35 | -0.51 | 7.10 | 4 |" in text
         )
-        assert "| 0.40 | 0.20 | 4.50 | 10x | 90 min |" in text
+        assert "| 0.40 | 0.20 | 4.50 | 10x |" in text
         assert "| custom |" in text
-        assert text.index("| day/night, heat out") < text.index("| custom |")
+        assert text.index("| day/night, windows balance") < text.index("| custom |")
         assert "flux-neutral" not in text
         assert "heat in and out through the floor strips" in text
+        assert "wall time" not in text
+        assert "90 min" not in text
         assert "| primary |" not in text  # internal key never reaches the table
         assert "*caveat text*" in text
         assert "Second-half (days 5-10) means" in text
         assert "spatial peak 10 m wind" in text
         for removed in ("Nusselt", "Nu |", "arrest", "stationary", "drift"):
             assert removed not in text
+
+    def test_headline_case_comes_first(self) -> None:
+        text = render_annulus(
+            {"cases": {"primary": SUMMARY, "window_sink": SUMMARY}}, "c"
+        )
+        assert text.index("(headline)") < text.index("windows balance land")
 
     def test_resolution_rows_render_as_their_own_table(self) -> None:
         fine = {**SUMMARY, "n_theta": 512, "label": "4-day check, 512 around the ring"}
@@ -155,7 +162,7 @@ class TestAnnulusBlock:
 
     def test_render_blocks_includes_the_summary(self, report: AtmosphereReport) -> None:
         blocks = render_blocks(report, {"cases": {"primary": SUMMARY}})
-        assert "| day/night, heat out through windows |" in blocks["annulus"]
+        assert "| day/night, windows balance land instantly |" in blocks["annulus"]
         assert report.caveats["annulus"] in blocks["annulus"]
 
 
@@ -163,7 +170,7 @@ def test_every_case_has_a_plain_label() -> None:
 
     assert set(CASES) <= set(CASE_LABELS)
     assert CASE_LABELS["nu10"] == "10x eddy viscosity"
-    assert CASE_LABELS["window_sink"] == "day/night, windows always cool"
+    assert CASE_LABELS["window_sink"] == "day/night, windows always cool (headline)"
 
 
 class TestBand:

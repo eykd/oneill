@@ -8,11 +8,11 @@ That is our answer to worldbuilding.stackexchange question 159233. The habitat i
 
 Once the air turns with the hull, the spin makes no wind; sunlight through the windows drives the weather. It is convective, with thermals over the land strips; how fast they rise lies between the rotation-free scale (≈1.8 m/s, ≈15 min to cloud base) and the parcel bound (tenths of a m/s, 1.5–5 h). Clouds form about 0.8 km (half a mile) up at 70 % humidity and 1.8 km (1.1 miles) up at 50 % (O'Neill air at 290 K).
 
-<!-- PROVISIONAL res-check --> Our 2D simulation, pending a resolution check, puts the wind 10 m (33 ft) up at about 1 m/s (2 to 2.5 mph), averaged over the floor and over day and night. Afternoons are breezier and nights nearly calm, with 35 to 50 times more wind energy by day than by night. Local highs (statistical, mean + 3σ around the ring) reach about 4 m/s (9 mph). The breeze fronts at the window and land edges are not resolved and may be windier. There is no prevailing wind.
+Our 2D simulation puts the wind 10 m (33 ft) up at about 0.9 m/s (2 mph), averaged over the floor and over day and night, with local highs (statistical, mean + 3σ around the ring) near 3.5 m/s (8 mph). That is the headline case, where the windows shed heat at a steady rate. Other assumptions about where the heat leaves give 1.0 to 1.7 m/s (2 to 4 mph), with local highs of 4 to 6.6 m/s (9 to 15 mph). Afternoons are breezier and nights nearly calm, with 25 to 50 times more wind energy by day than by night. The breeze fronts at the window and land edges are not resolved and may be windier. There is no prevailing wind.
 
 The blender exists only while the spin changes. Spin a hull up from rest in one hour and the wind at 10 m reaches 18 to 23 m/s (40 to 50 mph), a gale at a bit over half hurricane force, and the air takes 7 to 23 hours to catch up. Those figures are order of magnitude only. A 24-hour spin-up cuts the wind to about a third, and a real habitat would spin up slowly or pressurise after spin-up, so the fast case is a worst case.
 
-Rising air is pushed spinward and falling things land antispinward, so the question's "deflected antispinward" is half right. In the 2D model, eddies settle at 1 to 2 km (0.6 to 1.2 miles) when heat leaves the air through the floor strips. If the air sheds heat everywhere instead, vortices the size of the habitat form, so where the heat goes is a design choice that shapes the weather.
+Rising air is pushed spinward and falling things land antispinward, so the question's "deflected antispinward" is half right. In the 2D model, eddies settle at 1 to 2 km (0.6 to 1.2 miles), near the strip spacing, and no habitat-scale vortex forms. The more of the heat that leaves the air away from the land strips, the more energy moves into the largest eddies, and if the air sheds heat everywhere, vortices the size of the habitat appear. Where the heat goes is a design choice that shapes the weather.
 
 ## Words we use
 
@@ -186,23 +186,23 @@ Spinning-annulus experiments agree: convection with a hot outer wall turns quasi
 
 ## The 2D weather simulation
 
-Within its assumptions, the 2D simulation finds kilometre-scale eddies, neither locked to the three strips nor growing to the size of the habitat, unless the air sheds its heat everywhere.
+Within its assumptions, the 2D simulation finds eddies near the strip spacing, a kilometre or two across, with no habitat-scale vortices unless the air sheds its heat everywhere. Between those ends, the outcome slides with where heat leaves the air.
 
 The model solves the flow in a cross-section of the habitat, assuming nothing varies along the axis, which strong rotation favours. In 2D, turbulence moves energy to larger scales until friction stops it, and the open question (hypothesis H1) was whether that happens near the strip scale or only at the size of the habitat. Theory says drag halts the cascade at some length (Boffetta 2007), but that length depends on an energy-input rate we could pin down only to within about two orders of magnitude, so the estimate ran from below the forcing scale to larger than the habitat. That spread is why we ran the model.
 
-Gravity is centrifugal, so warm air is pushed toward the axis, and uneven heating around the ring spins up eddies. Land strips heat the air with a midday peak of 200 W/m² (daylight mean 127) and −30 W/m² at night. The primary run balances this instantly through the windows, which makes them a 200 W/m² sink at noon and a slight heat source at night: a numerical convenience, not a window model. The steady (±100 W/m²) and volumetric-sink cases bracket where heat really leaves, and the answer depends on it. Each validation test is built to fail if its ingredient is wrong (`docs/design/annulus2d.md` §5).
+Gravity is centrifugal, so warm air is pushed toward the axis, and uneven heating around the ring spins up eddies. Land strips heat the air with a midday peak of 200 W/m² (daylight mean 127) and −30 W/m² at night. In the headline run the windows shed heat at a constant 54 W/m², the land's daily-mean gain, so the floor is heat-neutral over a day but not hour by hour. An instant balance, in which the windows warm the air at night, is kept as a sensitivity case, along with steady heating (±100 W/m²) and a volumetric sink that removes heat from all the air. Each validation test is built to fail if its ingredient is wrong (`docs/design/annulus2d.md` §5).
 
 <!-- gen:annulus -->
-| Case | days | nu_t | Coriolis-buoyancy | r_in / R | n_theta | rms wind 10 m (m/s) | mean wind 10 m (m/s) | spatial peak 10 m wind, mean\|u\|+3 sigma over theta (m/s) | peak m | m=3 fraction | m<=2 fraction | energy centroid length (km) | day/night KE ratio | wall time |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| day/night, heat out through windows | 10 | 1 | on | 0.1 | 256 | 1.06 | +0.01 | 4.05 | 3 | 0.19 | 0.17 | 1.40 | 42x | 2.8 h |
-| day/night, windows always cool | 10 | 1 | on | 0.1 | 256 | 0.94 | -0.02 | 3.55 | 3 | 0.19 | 0.31 | 1.82 | 31x | 94 min |
-| constant heating, no night | 10 | 1 | on | 0.1 | 256 | 1.37 | +0.01 | 5.26 | 3 | 0.18 | 0.11 | 1.12 | 2x | 3.3 h |
-| warm-air Coriolis term off | 10 | 1 | off | 0.1 | 256 | 1.05 | -0.01 | 4.05 | 3 | 0.19 | 0.20 | 1.49 | 39x | 2.7 h |
-| 10x eddy viscosity | 10 | 10 | on | 0.1 | 256 | 1.03 | +0.01 | 3.96 | 3 | 0.35 | 0.19 | 1.92 | 36x | 2.2 h |
-| inner wall at 0.05 R | 10 | 1 | on | 0.05 | 256 | 1.06 | +0.00 | 4.06 | 3 | 0.19 | 0.20 | 1.48 | 36x | 2.8 h |
-| inner wall at 0.2 R | 10 | 1 | on | 0.2 | 256 | 1.05 | +0.01 | 4.05 | 3 | 0.18 | 0.18 | 1.47 | 51x | 2.9 h |
-| heat lost from all the air | 10 | 1 | on | 0.1 | 256 | 1.74 | -0.00 | 6.64 | 2 | 0.11 | 0.65 | 4.28 | 94x | 3.9 h |
+| Case | days | nu_t | Coriolis-buoyancy | r_in / R | n_theta | rms wind 10 m (m/s) | mean wind 10 m (m/s) | spatial peak 10 m wind, mean\|u\|+3 sigma over theta (m/s) | peak m | m=3 fraction | m<=2 fraction | energy centroid length (km) | day/night KE ratio |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| day/night, windows always cool (headline) | 10 | 1 | on | 0.1 | 256 | 0.94 | -0.02 | 3.55 | 3 | 0.19 | 0.31 | 1.82 | 31x |
+| day/night, windows balance land instantly | 10 | 1 | on | 0.1 | 256 | 1.06 | +0.01 | 4.05 | 3 | 0.19 | 0.17 | 1.40 | 42x |
+| constant heating, no night | 10 | 1 | on | 0.1 | 256 | 1.37 | +0.01 | 5.26 | 3 | 0.18 | 0.11 | 1.12 | 2x |
+| warm-air Coriolis term off | 10 | 1 | off | 0.1 | 256 | 1.05 | -0.01 | 4.05 | 3 | 0.19 | 0.20 | 1.49 | 39x |
+| 10x eddy viscosity | 10 | 10 | on | 0.1 | 256 | 1.03 | +0.01 | 3.96 | 3 | 0.35 | 0.19 | 1.92 | 36x |
+| inner wall at 0.05 R | 10 | 1 | on | 0.05 | 256 | 1.06 | +0.00 | 4.06 | 3 | 0.19 | 0.20 | 1.48 | 36x |
+| inner wall at 0.2 R | 10 | 1 | on | 0.2 | 256 | 1.05 | +0.01 | 4.05 | 3 | 0.18 | 0.18 | 1.47 | 51x |
+| heat lost from all the air | 10 | 1 | on | 0.1 | 256 | 1.74 | -0.00 | 6.64 | 2 | 0.11 | 0.65 | 4.28 | 94x |
 
 Second-half (days 5-10) means; 2D (r, theta) model; heat in and out through the floor strips vs volumetric sink differ because the outcome depends on where heat leaves the air. The day/night ratio is the median over whole days after day 1 of the daily maximum over minimum kinetic energy.
 
@@ -216,13 +216,17 @@ Resolution check (same case, different azimuthal resolution; days 2-4 means):
 *Two-dimensional (axis-invariant) Boussinesq convection with constant eddy viscosity, a free-slip inner wall at the stated radius (an artifact: the habitat has no inner wall) and a canopy-drag floor. It can support or undermine the 2-D hypothesis but cannot show where axis-invariance breaks down. Energy is conserved only to a few percent when eddies saturate.*
 <!-- /gen -->
 
-Where heat enters and leaves through the floor strips, the flow neither locks to the three-strip pattern nor condenses into habitat-scale vortices. Energy peaks broadly in the three-fold pattern: 18 to 35 % sits there, and 11 to 20 % in patterns repeating once or twice around the ring. The energy-weighted eddy size is 1.1 to 1.9 km (0.7 to 1.2 miles). Ten days of steady heating never grew the large patterns either, so the night is not what keeps eddies small.
+A 256 vs 512 azimuthal-resolution check over days 2-4, run on the instant-balance case, agrees within 7 % for winds, dissipation, eddy size and energy; the strip-locked fraction varies more (0.18 vs 0.24) and is quoted as a range.
 
-When the air loses heat everywhere and the windows are inert (the volumetric sink), 65 % of the energy moves into those largest patterns, total energy is about 45 times higher, and vortices the size of the habitat appear. How a real habitat sheds its heat is a design choice, and it decides between kilometre-scale eddies and habitat-scale ones. Little else matters: switching Coriolis-buoyancy off or moving the model's artificial inner wall (0.05 R to 0.2 R) changes nothing, and ten times the eddy viscosity raises the three-strip share to 35 % with unchanged winds.
+Whenever heat leaves through the windows, the spectrum still peaks at the three-strip forcing scale and no habitat-scale vortex forms, but the share of energy in the largest patterns (those repeating once or twice around the ring) rises as heat leaves the air away from the land strips: 0.17 with instant balance, 0.31 with a constant window sink. The share locked to the three-strip pattern itself is 18 to 35 % across these runs, and the energy-weighted eddy size is 1.1 to 1.9 km (0.7 to 1.2 miles). Ten days of steady heating never grew the large patterns either, so the night is not what keeps eddies small.
 
-<!-- PROVISIONAL res-check --> At 10 m, the spatial rms wind over a day-and-night mean is about 1.0 to 1.1 m/s (2 to 2.5 mph) in the floor-strip cases, 1.4 m/s (3 mph) with steady heating and 1.7 m/s (4 mph) with the volumetric sink. Local highs (statistical, mean + 3σ around the ring) reach about 4 m/s (9 mph), 5.3 m/s (12 mph) and 6.6 m/s (15 mph) in the same cases. A resolution check is still running, so these winds are provisional.
+When the air loses heat everywhere and the windows are inert (the volumetric sink), the largest patterns hold 0.65 of the energy, total energy is about 45 times higher, and the flow turns condensate-like, with vortices the size of the habitat. So H1 has no yes-or-no answer. It is a continuum set by the habitat's heat sink, and how a real habitat sheds its heat is a design choice. Little else matters: switching Coriolis-buoyancy off or moving the model's artificial inner wall (0.05 R to 0.2 R) changes nothing, and ten times the eddy viscosity raises the three-strip share to 35 % with unchanged winds.
 
-There is no prevailing wind: the mean wind around the ring is under 0.02 m/s. Kinetic energy is typically 35 to 50 times higher by day than by night (single days range from about 15× to over 100×), about 90 times with the volumetric sink; steady heating has no daily cycle. The windiest places are the strip edges, where breeze fronts sit fixed at every window/land boundary. The step-function heating sharpens them, and the model does not resolve their peak speed.
+With the constant window sink the 10 m wind is about 0.9 m/s (spatial rms, day and night mean; 2 mph), with local highs (statistical, mean + 3σ around the ring) near 3.5 m/s (8 mph). Kinetic energy is about three times the instant-balance case, and 25 to 50 times higher by day than by night; the extra energy sits in larger eddies higher up, not at street level. The other heat sinks give 1.0 to 1.7 m/s (2 to 4 mph) with local highs of 4 to 6.6 m/s (9 to 15 mph), highest for the volumetric sink.
+
+At night the floor air cools to roughly 12 K (22 °F) below the interior. That cold pool's depth and strength depend on the constant eddy diffusivity used in a stable layer, so treat it as qualitative.
+
+There is no prevailing wind: the day-and-night mean of the wind around the ring is under 0.03 m/s at 10 m and under 0.1 m/s anywhere. As the floor cools at night, mass shifts outward and a weak antispinward (retrograde) drift of up to about 0.4 m/s develops aloft, then reverses by day. Steady heating has no daily cycle. The windiest places are the strip edges, where breeze fronts sit fixed at every window/land boundary. The step-function heating sharpens them, and the model does not resolve their peak speed.
 
 The model is 2D by construction, with canopy and end caps entering only as drag and end-cap friction as the main brake. It cannot show where the flow starts to vary along the axis, and its winds are area and time means, not street-level gusts.
 
@@ -275,7 +279,7 @@ Vortex streets need wind past an obstacle, so they appear only in sun-driven bre
 
 ## Open questions
 
-**H1: big eddies or locked cells.** Within 2D the answer is neither, and the outcome hinges on where heat leaves the air. What happens once the flow varies along the axis is still open, and so is how a real habitat would shed its heat.
+**H1: big eddies or locked cells.** Within 2D the answer is a continuum: eddies stay near the strip spacing when heat leaves through the floor, and grow to habitat scale as heat leaves the air everywhere. What happens once the flow varies along the axis is still open, and so is how a real habitat would shed its heat.
 
 **H2: the axial-wind veer.** Its size comes from a low-Reynolds-number simulation, and its direction in the habitat is unverified.
 
@@ -285,7 +289,7 @@ The turbulent spin-up time rests on our own derivation, and the spin-down eddy v
 
 ## Verdict: hurricane or breeze?
 
-A day in the habitat runs like this. Nights are nearly calm. As the land strips warm, thermals rise toward the axis, leaning spinward and climbing more slowly than on Earth, and by afternoon there are clouds about a mile up and a breeze of a few miles an hour. It blows hardest at the strip edges where land meets window, and a little gustier over the rooftops when it blows spinward. The only hurricane-class wind comes from changing the spin, and even a one-hour spin-up from rest makes a gale for most of a day, short of hurricane force.
+A day in the habitat runs like this. Nights are nearly calm, with cool air pooled on the floor. As the land strips warm, thermals rise toward the axis, leaning spinward and climbing more slowly than on Earth, and by afternoon there are clouds about a mile up and a breeze averaging about 2 mph, with local highs near 8 mph. It blows hardest at the strip edges where land meets window, and a little gustier over the rooftops when it blows spinward. The only hurricane-class wind comes from changing the spin, and even a one-hour spin-up from rest makes a gale for most of a day, short of hurricane force.
 
 ## Appendix: what about Navier–Stokes?
 

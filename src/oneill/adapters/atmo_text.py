@@ -515,8 +515,8 @@ def render_annulus(l3: Mapping[str, Any] | None, caveat: str) -> str:
 
 
 CASE_LABELS = {
-    "primary": "day/night, heat out through windows",
-    "window_sink": "day/night, windows always cool",
+    "window_sink": "day/night, windows always cool (headline)",
+    "primary": "day/night, windows balance land instantly",
     "steady": "constant heating, no night",
     "uniform_sink": "heat lost from all the air",
     "cb_off": "warm-air Coriolis term off",
@@ -541,7 +541,6 @@ ANNULUS_HEADERS = [
     "m<=2 fraction",
     "energy centroid length (km)",
     "day/night KE ratio",
-    "wall time",
 ]
 RESOLUTION_HEADERS = [
     "Run",
@@ -579,7 +578,6 @@ def _annulus_row(name: str, c: Mapping[str, Any]) -> list[str]:
         f"{c['large_scale_fraction']:.2f}",
         f"{c['length_centroid_m'] / 1000.0:.2f}",
         "-" if contrast is None else f"{contrast:.0f}x",
-        _wall(c.get("wall_seconds")),
     ]
 
 
@@ -595,15 +593,9 @@ def _resolution_row(name: str, c: Mapping[str, Any]) -> list[str]:
     ]
 
 
-def _wall(seconds: float | None) -> str:
-    if seconds is None:
-        return "-"
-    return _duration(seconds)
-
-
 CASE_ORDER = (
-    "primary",
     "window_sink",
+    "primary",
     "steady",
     "cb_off",
     "nu10",
