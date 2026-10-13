@@ -231,8 +231,8 @@ def bradshaw_number(shear: float, omega: float) -> float:
 def _bradshaw(shear: NDArray[np.float64], omega: float) -> NDArray[np.float64]:
     """Vectorised ``B = S (S + 1)``, NaN where there is no shear."""
     s = np.full_like(shear, np.nan)
-    np.divide(-2.0 * omega, shear, out=s, where=shear != 0.0)
-    with np.errstate(over="ignore"):  # denormal shear: B overflows to +inf (stable)
+    with np.errstate(over="ignore"):  # denormal shear: S and B overflow to inf (stable)
+        np.divide(-2.0 * omega, shear, out=s, where=shear != 0.0)
         return np.asarray(s * (s + 1.0))
 
 
