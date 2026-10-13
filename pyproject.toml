@@ -83,3 +83,11 @@ exclude_also = [
     "if TYPE_CHECKING:",
     "@(typing\\.)?overload",
 ]
+
+[tool.importlinter]
+root_package = "oneill"
+
+[[tool.importlinter.contracts]]
+name = "Hexagonal layers: adapters -> motion -> core"
+type = "layers"
+layers = ["oneill.adapters", "oneill.motion", "oneill.core"]
