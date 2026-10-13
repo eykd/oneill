@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from oneill.atmo.annulus2d import (
+    DEFAULT_CFL,
     Annulus,
     AnnulusConfig,
     AnnulusState,
@@ -394,8 +395,8 @@ class TestInviscidDynamics:
         eddy = model.energy(state) - mean
         assert eddy > 0.1 * total0  # grew from ~1e-14 of the total
         assert mean < mean0  # and took it from the jet
-        # the scheme is not exactly energy conserving: up to ~4 % gain at saturation
-        assert model.energy(state) == pytest.approx(total0, rel=6e-2)
+        # at the default CFL the saturated jet keeps its energy to well under 1 %
+        assert model.energy(state) == pytest.approx(total0, rel=1e-2)
 
     def test_mean_wind_alone_is_a_steady_solution_without_viscosity(self) -> None:
         model = Annulus(inviscid())
@@ -658,6 +659,25 @@ class TestAdvanceAndDiagnostics:
         ladder = 8.0 / 1.25 ** np.arange(0, 40)
         assert np.min(np.abs(ladder - small_dt)) < 1e-9
         assert small_dt < 8.0
+
+    def test_step_ratios_beyond_zero_stability_are_rejected(self) -> None:
+        model = Annulus(small(forcing=Forcing(land_flux=0.0)))
+        state = model.initial_state(amplitude=0.0)
+        model.step(state, 1.0)
+        model.step(state, 1.0)
+        model.step(state, 2.0)  # ratio 2 is fine
+        with pytest.raises(ValueError, match="step ratio"):
+            model.step(state, 5.0)
+
+    def test_default_cfl_is_conservative(self) -> None:
+        assert DEFAULT_CFL == 0.15
+        model = Annulus(small(forcing=Forcing(land_flux=0.0)))
+        state = model.initial_state(amplitude=0.0)
+        state.ubar[:] = 5.0
+        default = model.stable_dt(state, dt_max=1e9)
+        assert default == pytest.approx(
+            0.15 / 0.4 * model.stable_dt(state, cfl=0.4, dt_max=1e9)
+        )
 
     def test_variable_steps_stay_accurate(self) -> None:
         # SBDF2 with a changing step reproduces exponential decay

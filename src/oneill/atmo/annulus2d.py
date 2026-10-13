@@ -56,6 +56,10 @@ if TYPE_CHECKING:
     type Array = NDArray[np.float64]
     type CArray = NDArray[np.complex128]
 
+DEFAULT_CFL = 0.15
+"""Default CFL number: 0.4 left a ~4 % energy gain when an inviscid jet saturated."""
+
+_STEP_RATIO_LIMIT = 1.0 + math.sqrt(2.0)
 _MIN_CELLS = 8
 _MIN_THETA = 8
 _FILTER_ORDER = 8
@@ -149,7 +153,10 @@ class AnnulusConfig:
             ``"fixed"``.
         t_outer: Outer wall temperature in K for ``"fixed"``.
         t_inner: Inner wall temperature in K for ``"fixed"``.
-        flux_inner: Inner wall flux in W/m^2 for ``"flux"``.
+        flux_inner: ``rho c_p kappa dT/dr`` at the inner wall in W/m^2 for ``"flux"``:
+            positive when ``T`` increases outward, i.e. heat flows *out of* the fluid
+            into the inner wall (the outer-wall forcing is the opposite: positive
+            heats the fluid).
         forcing: Surface heating pattern.
         modes: If given, only these azimuthal wavenumbers (and 0) are retained
             (linear stability tests).
@@ -867,6 +874,12 @@ class Annulus:
         positive("dt", dt)
         first = state.previous is None or state.last_dt is None
         omega = None if first else dt / float(state.last_dt)  # type: ignore[arg-type]
+        if omega is not None and omega >= _STEP_RATIO_LIMIT:
+            msg = (
+                f"step ratio {omega:.2f} must stay below 1 + sqrt(2) "
+                "(variable-step BDF2 zero-stability)"
+            )
+            raise ValueError(msg)
         factors = self._factors(dt, omega)
         (n_z, n_t, n_u), _, (z_in, z_out) = self.explicit_terms(state)
         mass = self.moment
@@ -897,7 +910,7 @@ class Annulus:
     def suggest_dt(
         self,
         state: AnnulusState,
-        cfl: float = 0.4,
+        cfl: float = DEFAULT_CFL,
         dt_max: float = 10.0,
         ratio: float = 1.25,
     ) -> float:
@@ -918,7 +931,7 @@ class Annulus:
         state: AnnulusState,
         t_end: float,
         *,
-        cfl: float = 0.4,
+        cfl: float = DEFAULT_CFL,
         dt_max: float = 10.0,
         every: float | None = None,
         callback: Callable[[AnnulusState], None] | None = None,
@@ -933,7 +946,7 @@ class Annulus:
                 next_call += every or 0.0
 
     def stable_dt(
-        self, state: AnnulusState, cfl: float = 0.4, dt_max: float = 10.0
+        self, state: AnnulusState, cfl: float = DEFAULT_CFL, dt_max: float = 10.0
     ) -> float:
         """CFL time step from the current winds (radial and azimuthal)."""
         u_r, u_th, _ = self.velocities(state)
