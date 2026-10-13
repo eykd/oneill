@@ -199,3 +199,7 @@ class TestRunL3:
         assert atmo_cli.load_l3_summary(Path("/nonexistent/l3.json")) is None
         merged = atmo_cli.merge_l3_summary(None, [{"name": "a"}])
         assert merged == {"schema": 1, "cases": {"a": {"name": "a"}}}
+        with_res = {"schema": 1, "cases": {}, "resolution": {"r": {"name": "r"}}}
+        kept = atmo_cli.merge_l3_summary(with_res, [{"name": "b"}])
+        assert kept["resolution"] == {"r": {"name": "r"}}
+        assert set(kept["cases"]) == {"b"}

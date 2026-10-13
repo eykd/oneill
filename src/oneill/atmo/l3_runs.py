@@ -190,6 +190,22 @@ def run_case(  # noqa: PLR0913
     )
 
 
+def day_night_contrast(series: list[list[float]], min_samples: int = 3) -> float | None:
+    """Median over whole days (after day 1) of the daily maximum over minimum energy.
+
+    ``series`` is ``[[t_days, energy], ...]``. A day counts when it holds at least
+    ``min_samples`` samples with positive energy. Returns ``None`` if no day does.
+    """
+    t = np.array([p[0] for p in series], dtype=np.float64)
+    e = np.array([p[1] for p in series], dtype=np.float64)
+    ratios = []
+    for day in range(1, int(np.floor(t[-1])) + 1 if len(t) else 1):
+        window = e[(t >= day) & (t < day + 1) & (e > 0.0)]
+        if len(window) >= min_samples:
+            ratios.append(float(window.max() / window.min()))
+    return float(np.median(ratios)) if ratios else None
+
+
 def _first_cell(cfg: AnnulusConfig) -> float:
     """Width in m of the cell next to the floor."""
     gap = cfg.radius * (1.0 - cfg.r_in_fraction)

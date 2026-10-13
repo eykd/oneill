@@ -114,7 +114,10 @@ def merge_l3_summary(
     cases = dict(existing["cases"]) if existing else {}
     for summary in summaries:
         cases[summary["name"]] = summary
-    return {"schema": _SCHEMA, "cases": cases}
+    merged: dict[str, Any] = {"schema": _SCHEMA, "cases": cases}
+    if existing and existing.get("resolution"):
+        merged["resolution"] = existing["resolution"]
+    return merged
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:

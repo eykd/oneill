@@ -9,6 +9,7 @@ touches the file system.
 import re
 from typing import TYPE_CHECKING, Any
 
+from oneill.atmo.l3_runs import day_night_contrast
 from oneill.atmo.report import (
     DEFLECTION_RISE,
     HUMIDITIES,
@@ -496,56 +497,67 @@ def render_annulus(l3: Mapping[str, Any] | None, caveat: str) -> str:
     order = [name for name in CASE_ORDER if name in cases] + sorted(
         set(cases) - set(CASE_ORDER)
     )
-    rows = []
-    for name in order:
-        c = cases[name]
-        rows.append(
-            [
-                name,
-                f"{c['days']:g}",
-                f"{c['nu']:g}",
-                "on" if c["coriolis_buoyancy"] else "off",
-                f"{c['r_in_fraction']:g}",
-                "yes" if c["stationary"] else "no",
-                f"{c['rms_wind_10m']:.2f}",
-                f"{c['gust_10m']:.2f}",
-                f"{c['zonal_wind_10m']:+.2f}",
-                f"{c['m_peak']}",
-                f"{c['length_peak_m'] / 1000.0:.2f}",
-                f"{c['arrest_low_m'] / 1000.0:.1f}-{c['arrest_high_m'] / 1000.0:.1f}",
-                f"{c['lock_fraction']:.2f}",
-                f"{c['large_scale_fraction']:.2f}",
-                f"{c['nusselt']:.1f}",
-                _wall(c.get("wall_seconds")),
-            ]
-        )
-    table = _table(
-        [
-            "Case",
-            "days",
-            "nu_t",
-            "Coriolis-buoyancy",
-            "r_in / R",
-            "stationary",
-            "rms wind 10 m (m/s)",
-            "gust 10 m (m/s)",
-            "mean wind 10 m (m/s)",
-            "peak m",
-            "eddy scale (km)",
-            "arrest scale (km)",
-            "m=3 fraction",
-            "m<=2 fraction",
-            "Nu",
-            "wall time",
-        ],
-        rows,
-    )
+    rows = [_annulus_row(name, cases[name]) for name in order]
+    table = _table(ANNULUS_HEADERS, rows)
     notes = "\n".join(f"- **{n}**: {cases[n]['description']}" for n in order)
-    return (
-        "Statistics over the second half of each run; positive mean wind is "
-        "spinward.\n\n"
-        f"{table}\n\n{notes}\n\n*{caveat}*"
+    parts = [table, FOOTNOTE, notes]
+    resolution = {} if l3 is None else dict(l3.get("resolution", {}))
+    if resolution:
+        rrows = [_annulus_row(name, resolution[name]) for name in sorted(resolution)]
+        parts += [
+            "Resolution check (same case, different azimuthal resolution):",
+            _table(ANNULUS_HEADERS, rrows),
+        ]
+    parts.append(f"*{caveat}*")
+    return "\n\n".join(parts)
+
+
+ANNULUS_HEADERS = [
+    "Case",
+    "days",
+    "nu_t",
+    "Coriolis-buoyancy",
+    "r_in / R",
+    "n_theta",
+    "rms wind 10 m (m/s)",
+    "mean wind 10 m (m/s)",
+    "spatial peak 10 m wind, mean\\|u\\|+3 sigma over theta (m/s)",
+    "peak m",
+    "m=3 fraction",
+    "m<=2 fraction",
+    "energy centroid length (km)",
+    "day/night KE ratio",
+    "wall time",
+]
+FOOTNOTE = (
+    "Second-half (days 5-10) means; 2D (r, theta) model; flux-neutral cases vs "
+    "volumetric sink differ because the outcome depends on where heat leaves the "
+    "air. The day/night ratio is the median over whole days after day 1 of the "
+    "daily maximum over minimum kinetic energy."
+)
+
+
+def _annulus_row(name: str, c: Mapping[str, Any]) -> list[str]:
+    contrast = (
+        day_night_contrast(c["energy_series"]) if c.get("energy_series") else None
     )
+    return [
+        name,
+        f"{c['days']:g}",
+        f"{c['nu']:g}",
+        "on" if c["coriolis_buoyancy"] else "off",
+        f"{c['r_in_fraction']:g}",
+        f"{c.get('n_theta', '-')}",
+        f"{c['rms_wind_10m']:.2f}",
+        f"{c['zonal_wind_10m']:+.2f}",
+        f"{c['gust_10m']:.2f}",
+        f"{c['m_peak']}",
+        f"{c['lock_fraction']:.2f}",
+        f"{c['large_scale_fraction']:.2f}",
+        f"{c['length_centroid_m'] / 1000.0:.2f}",
+        "-" if contrast is None else f"{contrast:.0f}x",
+        _wall(c.get("wall_seconds")),
+    ]
 
 
 def _wall(seconds: float | None) -> str:

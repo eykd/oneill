@@ -82,19 +82,26 @@ SUMMARY = {
     "days": 3.0,
     "nu": 1.0,
     "r_in_fraction": 0.1,
+    "n_theta": 256,
     "coriolis_buoyancy": True,
-    "stationary": False,
     "rms_wind_10m": 2.345,
     "gust_10m": 7.1,
     "zonal_wind_10m": -0.512,
     "m_peak": 4,
-    "length_peak_m": 4500.0,
-    "arrest_low_m": 700.0,
-    "arrest_high_m": 1500.0,
+    "length_centroid_m": 4500.0,
     "lock_fraction": 0.4,
     "large_scale_fraction": 0.2,
-    "nusselt": 12.34,
     "wall_seconds": 5400.0,
+    "energy_series": [
+        [1.1, 10.0],
+        [1.3, 100.0],
+        [1.6, 40.0],
+        [2.1, 12.0],
+        [2.3, 120.0],
+        [2.6, 30.0],
+    ],
+    "nusselt": 12.0,
+    "arrest_low_m": 700.0,
 }
 
 
@@ -106,23 +113,30 @@ class TestAnnulusBlock:
         assert render_annulus({"cases": {}}, "c").startswith("No L3 runs")
 
     def test_table_of_cases(self) -> None:
-        extra = {
-            **SUMMARY,
-            "name": "custom",
-            "description": "extra",
-            "wall_seconds": None,
-        }
+        extra = {**SUMMARY, "name": "custom", "description": "extra"}
+        del extra["wall_seconds"]
+        del extra["energy_series"]
         text = render_annulus(
             {"cases": {"primary": SUMMARY, "custom": extra}}, "caveat text"
         )
-        assert "| primary | 3 | 1 | on | 0.1 | no | 2.35 | 7.10 | -0.51 | 4 |" in text
-        assert "4.50" in text
-        assert "0.7-1.5" in text
-        assert "90 min" in text
+        assert "| primary | 3 | 1 | on | 0.1 | 256 | 2.35 | -0.51 | 7.10 | 4 |" in text
+        assert "| 0.40 | 0.20 | 4.50 | 10x | 90 min |" in text
         assert "| custom |" in text
         assert text.index("| primary |") < text.index("| custom |")
         assert "- **primary**: day/night, neutral windows" in text
         assert "*caveat text*" in text
+        assert "Second-half (days 5-10) means" in text
+        assert "spatial peak 10 m wind" in text
+        for removed in ("Nusselt", "Nu |", "arrest", "stationary", "drift"):
+            assert removed not in text
+
+    def test_resolution_rows_render_as_their_own_table(self) -> None:
+        fine = {**SUMMARY, "n_theta": 512}
+        text = render_annulus(
+            {"cases": {"primary": SUMMARY}, "resolution": {"primary_nt512": fine}}, "c"
+        )
+        assert "Resolution check" in text
+        assert "| primary_nt512 | 3 | 1 | on | 0.1 | 512 |" in text
 
     def test_render_blocks_includes_the_summary(self, report: AtmosphereReport) -> None:
         blocks = render_blocks(report, {"cases": {"primary": SUMMARY}})

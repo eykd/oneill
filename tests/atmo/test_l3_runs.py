@@ -20,6 +20,7 @@ from oneill.atmo.l3_runs import (
     _first_cell,
     case_config,
     case_figures,
+    day_night_contrast,
     run_case,
     summarize,
 )
@@ -101,6 +102,25 @@ class TestDiagnostics:
         assert decaying.drift < 0.0
         assert not stationarity(t[:3], np.ones(3)).stationary  # too short
         assert not stationarity(t[:1], np.ones(1)).stationary
+
+
+class TestDayNightContrast:
+    def test_periodic_series(self) -> None:
+        t = np.arange(0.0, 6.0, 0.125)
+        energy = 100.0 * (1.0 + 0.9 * np.sin(2.0 * math.pi * t))  # 1.9/0.1 = 19x
+        series = [[float(a), float(b)] for a, b in zip(t, energy, strict=True)]
+        assert day_night_contrast(series) == pytest.approx(19.0, rel=0.02)
+
+    def test_the_first_day_is_skipped_and_the_median_is_used(self) -> None:
+        series = [[0.5, 1e9], [0.9, 1.0]]  # day 0 only: ignored
+        for day, high in ((1, 10.0), (2, 30.0), (3, 20.0)):
+            series += [[day + 0.1, 1.0], [day + 0.5, high], [day + 0.8, 2.0]]
+        assert day_night_contrast(series) == pytest.approx(20.0)
+
+    def test_no_complete_day_gives_none(self) -> None:
+        assert day_night_contrast([[1.1, 5.0], [1.2, 6.0]]) is None
+        assert day_night_contrast([[1.1, 0.0], [1.2, 0.0], [1.3, 0.0]]) is None
+        assert day_night_contrast([]) is None
 
 
 class TestCases:
