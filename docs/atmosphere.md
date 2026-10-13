@@ -2,7 +2,7 @@
 
 Hurricane-force winds or gentle breezes? Breezes, mostly. The hurricane exists only while someone changes the spin.
 
-That is our answer to worldbuilding.stackexchange question 159233. The habitat is the question's: a cylinder 3.2 km (2 miles) in radius and 20 km (12 miles) long, spinning at 0.53 rpm for 1 g at the floor (one turn every 113.5 s, floor speed 177 m/s), with three window strips between three land strips of low buildings and trees.
+That is our answer to worldbuilding.stackexchange question 159233. The habitat is the question's: a cylinder 3.2 km (2 miles) in radius and 20 km (12 miles) long, spinning at 0.53 rpm so that people on the floor weigh what they would on Earth (1 g) (one turn every 113.5 s, floor speed 177 m/s), with three window strips between three land strips of low buildings and trees.
 
 ## TL;DR
 
@@ -18,6 +18,8 @@ Rising air is pushed spinward and falling things land antispinward, so the quest
 
 *Spinward* is the direction the floor moves, *antispinward* the opposite, and *axial* runs along the cylinder. *Up* means toward the axis. Air *co-rotates* when it turns with the hull, which makes it still relative to the floor. The *Coriolis force* is the sideways push that anything moving feels in a spinning frame. The *Rossby number* compares a flow's own speed to the spin: well below 1, rotation dominates; well above 1, it barely matters. The *canopy* is the buildings and trees treated as one rough layer that drags on the wind. The *end caps* are the cylinder's two flat ends.
 
+*Spin weight* is what we call the weight things feel here, because nothing pulls on them. Seen from outside the spin, the floor pushes on the air beside it and molecular collisions pass that push inward as a pressure gradient, which bends every parcel's path into a circle; riding with the hull, we book it as an outward acceleration Ω²r. Spin weight is 1 g at the floor and fades linearly to zero at the axis, and only air turning with the hull feels all of it: air left behind during spin-up coasts, and air moving spinward weighs more (the Eötvös effect).
+
 ## The question
 
 The atmosphere the question describes (½ atm, 20 % O₂, 30 % N₂) is not O'Neill's. His 1974 *Physics Today* paper specifies "the air composition as well as the atmospheric pressure are those of sea level on Earth." The half-atmosphere comes from NASA SP-413, the 1975 Stanford torus study, at 50.8 kPa. We carry both as presets, "O'Neill 1974" and "SP-413", and every table reports both.
@@ -26,7 +28,7 @@ The question says anything moving radially is deflected antispinward, which hold
 
 ## Co-rotation is the default state
 
-Still air feels centrifugal gravity toward the floor and a pressure gradient pushing back, and the two balance as described below. Coriolis acts only on moving air, so still air feels none. Solid-body rotation is also stable: angular momentum per unit mass rises outward, so a displaced ring of air returns to where it started (Rayleigh's criterion).
+Seen from outside, the floor pushes the air nearest it and collisions pass the push inward, so pressure rises toward the floor and bends every parcel into the hull's circle. Riding with the hull, we see the same balance as spin weight held up by that pressure gradient, as described below. Coriolis acts only on moving air, so still air feels none. Solid-body rotation is also stable: angular momentum per unit mass rises outward, so a displaced ring of air returns to where it started (Rayleigh's criterion).
 
 So in a sealed hull wind needs a driver, either uneven heating or a change in the spin rate. The rest of this document takes them in turn.
 
@@ -36,7 +38,7 @@ Warm air is lighter than cold air and so carries slightly less Coriolis force, w
 
 Walking spinward adds about 1.1 % to your weight for each m/s, and walking antispinward removes the same, so a brisk stroll changes your weight by under 2 %. Walking along the axis changes nothing, and nobody is pushed sideways on level ground.
 
-Climbing brings the sideways push: spinward going up and antispinward going down, about 7.8 N (1.7 lbf) for a 70 kg person on a 1 m/s ladder. The push keeps its size with height while gravity weakens (to half, halfway to the axis), so near the axis "down" tilts strongly.
+Climbing brings the sideways push: spinward going up and antispinward going down, about 7.8 N (1.7 lbf) for a 70 kg person on a 1 m/s ladder. The push keeps its size with height while spin weight fades (to half, halfway to the axis), so near the axis "down" tilts strongly.
 
 Dropped objects land antispinward of the point below: 0.53 m (21 in) from a 10 m drop, 17 m (56 ft) from a 100 m tower. A vertical jump lands slightly spinward. Wind obeys the same rules, so spinward wind presses harder on the ground than antispinward wind (the Eötvös effect).
 
@@ -149,7 +151,7 @@ The habitat's whole sky is, thermodynamically, as deep as Earth's lowest 1.6 km 
 *Still, horizontally uniform air in hydrostatic balance; the isothermal and dry-adiabatic profiles bracket reality. Cloud base uses Bolton's formula for air with a dry-adiabatic ascent; true height converts the geopotential, Earth-equivalent height is phi / g.*
 <!-- /gen -->
 
-Pressure at the axis is about 82 % of floor pressure for either gas. A well-mixed column cools at 9.76 K/km (5.4 °F per 1,000 ft) at the floor, Earth's dry rate, and the rate falls to zero at the axis along with gravity, for 15.6 K (28 °F) in all.
+Pressure at the axis is about 82 % of floor pressure for either gas. A well-mixed column cools at 9.76 K/km (5.4 °F per 1,000 ft) at the floor, Earth's dry rate, and the rate falls to zero at the axis along with spin weight, for 15.6 K (28 °F) in all.
 
 Cloud base is where true height and Earth-equivalent height part ways. For O'Neill air at 290 K, condensation starts 1.8 km (1.1 miles) up at 50 % humidity, more than halfway to the axis, and 0.8 km (half a mile) up at 70 %. O'Neill quoted "between 1100 and 1400 meters" using Earth lapse rates; converted to true height those become 1.4 to 2.1 km, matching the table.
 
@@ -190,7 +192,7 @@ Within its assumptions, the 2D simulation finds eddies near the strip spacing, a
 
 The model solves the flow in a cross-section of the habitat, assuming nothing varies along the axis, which strong rotation favours. In 2D, turbulence moves energy to larger scales until friction stops it, and the open question (hypothesis H1) was whether that happens near the strip scale or only at the size of the habitat. Theory says drag halts the cascade at some length (Boffetta 2007), but that length depends on an energy-input rate we could pin down only to within about two orders of magnitude, so the estimate ran from below the forcing scale to larger than the habitat. That spread is why we ran the model.
 
-Gravity is centrifugal, so warm air is pushed toward the axis, and uneven heating around the ring spins up eddies. Land strips heat the air with a midday peak of 200 W/m² (daylight mean 127) and −30 W/m² at night. In the headline run the windows shed heat at a constant 54 W/m², the land's daily-mean gain, so the floor is heat-neutral over a day but not hour by hour. An instant balance, in which the windows warm the air at night, is kept as a sensitivity case, along with steady heating (±100 W/m²) and a volumetric sink that removes heat from all the air. Each validation test is built to fail if its ingredient is wrong (`docs/design/annulus2d.md` §5).
+Warm, lighter air is displaced toward the axis by denser air settling outward, so uneven heating around the ring spins up eddies. Land strips heat the air with a midday peak of 200 W/m² (daylight mean 127) and −30 W/m² at night. In the headline run the windows shed heat at a constant 54 W/m², the land's daily-mean gain, so the floor is heat-neutral over a day but not hour by hour. An instant balance, in which the windows warm the air at night, is kept as a sensitivity case, along with steady heating (±100 W/m²) and a volumetric sink that removes heat from all the air. Each validation test is built to fail if its ingredient is wrong (`docs/design/annulus2d.md` §5).
 
 <!-- gen:annulus -->
 | Case | days | nu_t | Coriolis-buoyancy | r_in / R | n_theta | rms wind 10 m (m/s) | mean wind 10 m (m/s) | spatial peak 10 m wind, mean\|u\|+3 sigma over theta (m/s) | peak m | m=3 fraction | m<=2 fraction | energy centroid length (km) | day/night KE ratio |
