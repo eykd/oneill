@@ -502,10 +502,13 @@ def render_annulus(l3: Mapping[str, Any] | None, caveat: str) -> str:
     parts = [table, FOOTNOTE]
     resolution = {} if l3 is None else dict(l3.get("resolution", {}))
     if resolution:
-        rrows = [_annulus_row(name, resolution[name]) for name in sorted(resolution)]
+        rrows = [_resolution_row(name, resolution[name]) for name in sorted(resolution)]
         parts += [
-            "Resolution check (same case, different azimuthal resolution):",
-            _table(ANNULUS_HEADERS, rrows),
+            (
+                "Resolution check (same case, different azimuthal resolution; "
+                "days 2-4 means):"
+            ),
+            _table(RESOLUTION_HEADERS, rrows),
         ]
     parts.append(f"*{caveat}*")
     return "\n\n".join(parts)
@@ -540,6 +543,15 @@ ANNULUS_HEADERS = [
     "day/night KE ratio",
     "wall time",
 ]
+RESOLUTION_HEADERS = [
+    "Run",
+    "n_theta",
+    "rms wind 10 m (m/s)",
+    "spatial peak 10 m wind, mean\\|u\\|+3 sigma over theta (m/s)",
+    "m=3 fraction",
+    "m<=2 fraction",
+    "energy centroid length (km)",
+]
 FOOTNOTE = (
     "Second-half (days 5-10) means; 2D (r, theta) model; heat in and out through "
     "the floor strips vs volumetric sink differ because the outcome depends on "
@@ -568,6 +580,18 @@ def _annulus_row(name: str, c: Mapping[str, Any]) -> list[str]:
         f"{c['length_centroid_m'] / 1000.0:.2f}",
         "-" if contrast is None else f"{contrast:.0f}x",
         _wall(c.get("wall_seconds")),
+    ]
+
+
+def _resolution_row(name: str, c: Mapping[str, Any]) -> list[str]:
+    return [
+        str(c.get("label", name)),
+        f"{c.get('n_theta', '-')}",
+        f"{c['rms_wind_10m']:.2f}",
+        f"{c['gust_10m']:.2f}",
+        f"{c['lock_fraction']:.2f}",
+        f"{c['large_scale_fraction']:.2f}",
+        f"{c['length_centroid_m'] / 1000.0:.2f}",
     ]
 
 

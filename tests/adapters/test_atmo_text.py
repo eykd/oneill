@@ -140,14 +140,18 @@ class TestAnnulusBlock:
             assert removed not in text
 
     def test_resolution_rows_render_as_their_own_table(self) -> None:
-        fine = {**SUMMARY, "n_theta": 512}
+        fine = {**SUMMARY, "n_theta": 512, "label": "4-day check, 512 around the ring"}
+        bare = {**SUMMARY, "n_theta": 128}
         text = render_annulus(
-            {"cases": {"primary": SUMMARY}, "resolution": {"primary_nt512": fine}}, "c"
+            {
+                "cases": {"primary": SUMMARY},
+                "resolution": {"a_512": fine, "b_128": bare},
+            },
+            "c",
         )
         assert "Resolution check" in text
-        assert (
-            "| primary_nt512 | 3 | 1 | on | 0.1 | 512 |" in text
-        )  # unknown key: as is
+        assert "| 4-day check, 512 around the ring | 512 |" in text
+        assert "| b_128 | 128 |" in text  # no label: the key
 
     def test_render_blocks_includes_the_summary(self, report: AtmosphereReport) -> None:
         blocks = render_blocks(report, {"cases": {"primary": SUMMARY}})
