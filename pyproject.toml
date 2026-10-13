@@ -1,0 +1,82 @@
+[project]
+name = "oneill"
+version = "0.1.0"
+description = "Fictitious forces and free flight inside a spinning O'Neill cylinder."
+readme = "README.md"
+authors = [
+    { name = "eykd", email = "david@worldsenoughstudios.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.5.4",
+]
+
+[project.scripts]
+oneill = "oneill.adapters.cli:run"
+
+[project.optional-dependencies]
+plot = [
+    "matplotlib>=3.11.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.169.0",
+    "import-linter>=2.15",
+    "matplotlib>=3.11.2",
+    "mypy>=2.4.0",
+    "pre-commit>=4.7.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["CPY001", "D203", "D213", "COM812", "ISC001"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"matplotlib".msg = "matplotlib may only be imported inside oneill.adapters.plots."
+
+[tool.ruff.lint.per-file-ignores]
+"src/oneill/adapters/plots.py" = ["TID251"]
+"tests/**" = ["S101", "PLR2004", "D", "TID251"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=oneill",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=100",
+    "--strict-markers",
+    "--strict-config",
+]
+
+[tool.coverage.run]
+source = ["oneill"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@(typing\\.)?overload",
+]
