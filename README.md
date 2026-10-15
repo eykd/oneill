@@ -3,8 +3,10 @@
 Fictitious forces and free flight inside a spinning O'Neill cylinder: what a
 person feels walking, climbing, riding elevators, dropping things and throwing
 them in a rotating habitat. It also has a set of reduced-order atmosphere
-models that ask what the weather would be like inside: hurricane-force winds or
-gentle breezes? Pure numpy; matplotlib only for plots.
+models that answer a question from Worldbuilding Stack Exchange about the
+weather inside: [Hurricane-force winds or gentle breezes in an O'Neill
+cylinder?](https://worldbuilding.stackexchange.com/questions/159233/hurricane-force-winds-or-gentle-breezes-in-an-oneill-cylinder)
+Pure numpy; matplotlib only for plots.
 
 The short answer, written up in [docs/atmosphere.md](docs/atmosphere.md), is
 breezes. Once the air turns with the hull, sunlight through the windows drives
