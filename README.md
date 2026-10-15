@@ -81,3 +81,7 @@ the Jacobi integral, RK4 against exact solutions) and use Hypothesis for the
 invariants. `HYPOTHESIS_PROFILE=ci uv run pytest` runs 300 examples per
 property instead of 25 (the few expensive RK4/ballistics properties cap their
 own count).
+
+## License
+
+BSD 3-Clause. See [LICENSE](LICENSE).
