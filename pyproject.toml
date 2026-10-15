@@ -1,7 +1,7 @@
 [project]
 name = "oneill"
 version = "0.1.0"
-description = "Fictitious forces and free flight inside a spinning O'Neill cylinder."
+description = "Fictitious forces, free flight and weather inside a spinning O'Neill cylinder."
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
